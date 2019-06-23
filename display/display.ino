@@ -69,6 +69,7 @@ bool staMode = true; // station, or infrastructure?
 time_t lastNtpDate;
 bool isDST = false; // always default to false; will set to true
 		    // during calculations if autoSetDST is true
+uint8_t lastUpdatePhase; // for debugging
 
 TetrisClock *clockDriver = NULL;
 WiFiUDP ntpUDP;
@@ -174,6 +175,8 @@ void handleStatus() {
     String(sunsetHours) + String(":") + String(sunsetMinutes) +
     String("</div><div>Is today DST: ") + 
     String(isDST ? "yes" : "no") +
+    String("</div><div>Last Update Phase: ") + 
+    String(lastUpdatePhase) +
     String("</div></html>");
     
   server.send(200, "text/html", status.c_str());
@@ -297,6 +300,7 @@ void addTextToBackingStore(String s)
 
 bool updateTime()
 {
+  lastUpdatePhase = 0;
   ledPanel.clear();
 
   // necessary to set this before running timeClient.update()
@@ -304,9 +308,11 @@ bool updateTime()
 
   if (!timeClient.update()) {
     // The NTP update failed; we'll try again next cycle
+    lastUpdatePhase = 1;
     return false;
   }
 
+  lastUpdatePhase = 2;
   uint8_t curMinute = timeClient.getMinutes();
   uint8_t curHour = timeClient.getHours();
   uint8_t curSecond = timeClient.getSeconds();
@@ -317,6 +323,7 @@ bool updateTime()
   uint32_t epochTime = timeClient.getEpochTime();
   lastNtpDate = epochTime;
   if (autoSetDST) {
+    lastUpdatePhase = 3;
     if (usIsTodayDST(day(lastNtpDate), month(lastNtpDate), dayOfWeek(lastNtpDate)) != isDST) {
       // DST flag changed. We can offset what timeClient returned, or we can take 
       // the lazy way out and just re-poll after changing the zone info...
@@ -349,6 +356,7 @@ bool updateTime()
   if (autoBrightness) {
 
     // recalculate today's sunrise/sunset times
+    lastUpdatePhase = 4;
     sunriseAt = wyncote.sunrise(year(lastNtpDate), month(lastNtpDate), day(lastNtpDate), isDST);
     sunsetAt = wyncote.sunset(year(lastNtpDate), month(lastNtpDate), day(lastNtpDate), isDST);
     
@@ -601,6 +609,22 @@ void setup()
     staMode = false; // No SSID, so force reconfiguration of STA mode
   }
 
+  // We start up in SoftAP mode, which the controller uses. This gives
+  // us a permanent future-proof version where the controller and
+  // clock will work, regardless of whether or not there's an Internet
+  // connection available.
+
+  WiFi.softAP("TetrisDisplay");
+  // Set the IP address and info for SoftAP mode. Note this is also
+  // the default IP (192.168.4.1), but better to be explicit...
+  IPAddress local_IP(192,168,4,1);
+  IPAddress gateway(192,168,4,1);
+  IPAddress subnet(255,255,255,0);
+  WiFi.softAPConfig(local_IP, gateway, subnet);
+
+  // If we have an SSID/password configured, we'll also try to connect
+  // to the internet for NTP updates.
+
   if (staMode) {
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
@@ -616,18 +640,6 @@ void setup()
     }
   }
 
-  // We *also* start up in SoftAP mode, which the controller
-  // uses. This gives us a permanent future-proof version where the
-  // controller and clock will work, regardless of whether or not
-  // there's an Internet connection available.
-
-  WiFi.softAP("TetrisDisplay");
-  // Set the IP address and info for SoftAP mode. Note this is also
-  // the default IP (192.168.4.1), but better to be explicit...
-  IPAddress local_IP(192,168,4,1);
-  IPAddress gateway(192,168,4,1);
-  IPAddress subnet(255,255,255,0);
-  WiFi.softAPConfig(local_IP, gateway, subnet);
   
 #if 0
   // Debugging: dump all the SSIDs we see to the SPIFFS file /ssids.txt
