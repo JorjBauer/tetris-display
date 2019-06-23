@@ -27,6 +27,7 @@ Daylight Savings time (US and Europe rules); sunrise and sunset
 brightness shifts; NTP synchronization every 10 minutes (done
 stupidly, so it's +/- 1 second accuracy).
 
-As of this writing, this is still a bit of a work-in-progress. I
-expect to put the project up on Hackaday.io shortly, and write up the
-tale in excrutiating detail there while I finish it all off...
+As of this writing, this is still a bit of a work-in-progress. The
+write-up is [going on
+Hackaday](https://hackaday.io/project/166204-tetris-display), so take
+a look there while I finish it all off...
