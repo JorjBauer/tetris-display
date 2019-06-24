@@ -55,20 +55,28 @@ uint8_t sunriseMinutes;
 uint8_t sunsetHours;
 uint8_t sunsetMinutes;
 
-// This SSID/password is read in from the config file in SPIFFS.
+enum {
+  DST_NONE = 0,
+  DST_USA  = 1,
+  DST_EU   = 2
+};
+
+// Preferences, as stored in SPIFFS. Defaults overridden by whatever's
+// read from the config.
 char ssid[50] = "";
 char password[50] = "";
+float lat = 40;
+float lon = -75;
+int8_t defaultTimeZone = -5;
+int8_t autoSetDST = DST_USA;
+bool staMode = true;
+// End preferences
 
-// *** FIXME: these are all prefs
-int8_t defaultTimeZone = -5; // FIXME: how to set this? ***
-bool autoSetDST = true;      // FIXME: another user pref to set ***
-Dusk2Dawn wyncote(40.091983, -75.146454, defaultTimeZone); // *** FIXME - pref for location?
-bool staMode = true; // station, or infrastructure?
-// *** end prefs
+Dusk2Dawn *location = NULL;
 
 time_t lastNtpDate;
 bool isDST = false; // always default to false; will set to true
-		    // during calculations if autoSetDST is true
+		    // during calculations if autoSetDST is set
 uint8_t lastUpdatePhase; // for debugging
 
 TetrisClock *clockDriver = NULL;
@@ -129,6 +137,7 @@ void handleRoot() {
 "<li><a href='/brightness?b=40'>/brightness</a>: GET with argument 'b' to set brightness (1-255)</li>"
 "<li><a href='/autobrightness'>/autobrightness</a>: toggle auto-brightness on or off</li>"
 "<li><a href='/file?path=/tetris.cfg'>/file</a>: retrieve file from SPIFFS with name in argument 'path'</li>"
+"<li><a href='/config'>/config</a>: change configuration (SSID, password, time zone)</li>"
 "</ul>"
 "</p>"
 "<p>This also listens on port 8267 (udp and tcp). When a TCP session is active, then the game is really in 'play' mode; pieces drop automatically, increasing in speed over time. Commands over UDP do play the game but the player has to make time pass (with 's' for single steps or (space) for a drop) unless you first send a '!'. When the game is running, it keeps going unless the TCP session drops (there is no way to stop after '!').</p>"
@@ -151,6 +160,16 @@ void handleStatus() {
     String(ssid) + 
     String("</div><div>Password: ") + 
     String(password) + 
+    String("</div><div>Lat/lon: ") +
+    String(lat) +
+    String(",") +
+    String(lon) +
+    String("</div><div>Time zone: ")+
+    String(defaultTimeZone) +
+    String("</div><div>Auto-set DST: ") +
+    String(autoSetDST) + 
+    String("</div><div>STA mode: ") +
+    String(staMode ? "true" : "false") + 
     String("</div><div>TCP client: ") +
     String( (tcpclient && tcpclient.connected()) ? 
 	    "Connected" : 
@@ -322,9 +341,13 @@ bool updateTime()
 
   uint32_t epochTime = timeClient.getEpochTime();
   lastNtpDate = epochTime;
-  if (autoSetDST) {
+  if (autoSetDST != DST_NONE) {
     lastUpdatePhase = 3;
-    if (usIsTodayDST(day(lastNtpDate), month(lastNtpDate), dayOfWeek(lastNtpDate)) != isDST) {
+    bool potentialDST = (autoSetDST == DST_USA) ?
+      usIsTodayDST(day(lastNtpDate), month(lastNtpDate), dayOfWeek(lastNtpDate)) :
+      europeIsTodayDST(day(lastNtpDate), month(lastNtpDate), dayOfWeek(lastNtpDate));
+
+    if (potentialDST != isDST) {
       // DST flag changed. We can offset what timeClient returned, or we can take 
       // the lazy way out and just re-poll after changing the zone info...
       if (curHour >= 2) {
@@ -354,11 +377,10 @@ bool updateTime()
 
   // Handle auto-brightness
   if (autoBrightness) {
-
     // recalculate today's sunrise/sunset times
     lastUpdatePhase = 4;
-    sunriseAt = wyncote.sunrise(year(lastNtpDate), month(lastNtpDate), day(lastNtpDate), isDST);
-    sunsetAt = wyncote.sunset(year(lastNtpDate), month(lastNtpDate), day(lastNtpDate), isDST);
+    sunriseAt = location->sunrise(year(lastNtpDate), month(lastNtpDate), day(lastNtpDate), isDST);
+    sunsetAt = location->sunset(year(lastNtpDate), month(lastNtpDate), day(lastNtpDate), isDST);
     
     sunriseHours = sunriseAt / 60;
     sunriseMinutes = sunriseAt % 60;
@@ -510,6 +532,60 @@ void handleFile() {
   }
 }
 
+void handleConfig()
+{
+  server.send(200, "text/html", 
+	      "<!DOCTYPE html><html>"
+	      "<head>"
+	      "</head>"
+	      "<body>"
+	      "<form action='/submit' method='post'>"
+	      "<div><input type='checkbox' name='sta' value='sta' checked />"
+	      "<label for='sta'>Connect to an existing network?</label></div>"
+	      "<div><label for='ssid'>Connect to SSID:</label>"
+	      "<input type='text' id='ssid' name='ssid' /></div>"
+	      "<div><label for='password'>Network Password:</label>"
+	      "<input type='password' id='password' name='password' /></div>"
+	      "<div><label for='lat'>Latitude:</label>"
+	      "<input type='text' id='lat' name='latitude' /></div>"
+	      "<div><label for='lon'>Longitude:</label>"
+	      "<input type='text' id='lon' name='longitude' /></div>"
+	      "<div><label for='tz'>Time zone:</label>"
+	      "<input type='text' id='tz' name='timezone' /></div>"
+	      "<div><p>Auto-set DST:</p>"
+	      "<p><input type='radio' name='autodst' value='US' checked='checked'><label for='US'>Yes, US DST rules</label><br />"
+	      "<input type='radio' name='autodst' value='EU'><label for='EU'>Yes, Europe DST rules</label><br />"
+	      "<input type='radio' name='autodst' value='NO'><label for='NO'>No, disable DST</label></p></div>"
+	      "<div><input type='submit' value='Save' /></div>"
+	      "</form>"
+	      "</body></html");
+}
+
+void handleSubmit()
+{
+  String new_ssid = server.arg("ssid");
+  String new_password = server.arg("password");
+  String new_timezone = server.arg("timezone");
+  String new_latitude = server.arg("latitude");
+  String new_longitude = server.arg("longitude");
+  String new_autodst = server.arg("autodst");
+  String new_sta = server.arg("sta");
+
+  strncpy(ssid, new_ssid.c_str(), 50);
+  strncpy(password, new_password.c_str(), 50);
+  lat = new_latitude.toFloat();
+  lon = new_longitude.toFloat();
+  defaultTimeZone = new_timezone.toInt();
+  //  autoSetDST = ... ? ***
+  staMode = true; // ***
+
+  writePrefs();
+
+  // Redirect to /status to show the changes
+  server.sendHeader("Location", String("/status"), true);
+  server.send(302, "text/plain", "");
+}
+
 void processConfig(const char *lhs, const char *rhs)
 {
   if (!strcmp(lhs, "ssid")) {
@@ -518,6 +594,47 @@ void processConfig(const char *lhs, const char *rhs)
   else if (!strcmp(lhs, "password")) {
     strncpy(password, (char *)rhs, 50);
   }
+  else if (!strcmp(lhs, "timezone")) {
+    defaultTimeZone = ((String)rhs).toInt();
+  }
+  else if (!strcmp(lhs, "autodst")) {
+    autoSetDST = 
+      (rhs[0] == 'u' || rhs[0] == 'U') ? DST_USA :
+      (rhs[0] == 'e' || rhs[0] == 'E') ? DST_EU :
+      DST_NONE;
+  }
+  else if (!strcmp(lhs, "stamode")) {
+    staMode = (rhs[0] == 't' || rhs[0] == 'y') ? true : false;
+  }
+  else if (!strcmp(lhs, "lat")) {
+    lat = ((String)rhs).toFloat();
+  }
+  else if (!strcmp(lhs, "lon")) {
+    lon = ((String)rhs).toFloat();
+  }
+}
+
+void writePrefs()
+{
+  fs::File f = SPIFFS.open("/tetris.cfg", "w");
+  f.println("# Submitted config");
+  f.print("ssid=");
+  f.println(ssid);
+  f.print("password=");
+  f.println(password);
+  f.print("timezone=");
+  f.println(defaultTimeZone);
+  f.print("autodst=");
+  f.println((autoSetDST == DST_NONE) ? "n" :
+	    (autoSetDST == DST_USA) ? "u" :
+	    "e");
+  f.print("stamode=");
+  f.println(staMode ? "t" : "f");
+  f.print("lat=");
+  f.println(lat);
+  f.print("lon=");
+  f.println(lon);
+  f.close();
 }
 
 void readPrefs(fs::File f)
@@ -591,7 +708,7 @@ void setup()
 	fsRunning = false;
       } else {
 	f = SPIFFS.open("/tetris.cfg", "w");
-	f.println("# Config version 1");
+	f.println("# Blank auto-generated config");
 	f.close();
 	f = SPIFFS.open("/tetris.cfg", "r");
 	if (!f) {
@@ -640,6 +757,7 @@ void setup()
     }
   }
 
+  location = new Dusk2Dawn(lat, lon, defaultTimeZone);
   
 #if 0
   // Debugging: dump all the SSIDs we see to the SPIFFS file /ssids.txt
@@ -715,6 +833,8 @@ void setup()
   server.on("/color", handleColorWheel);
   server.on("/update", handleUpdate);
   server.on("/file", handleFile);
+  server.on("/config", handleConfig);
+  server.on("/submit", handleSubmit);
 
   server.begin();
 
@@ -830,7 +950,6 @@ void textLoop()
 	ledPanel.SetLED(i, 31, p[i] ? CRGB::White : CRGB::Black);
       }
     } else if (!backingText.hasData() && currentMode == mode_startup) {
-      // ***
       if (staMode) {
 	startClockMode();
       } else {
@@ -838,7 +957,7 @@ void textLoop()
 	currentMode = mode_text;
 
 	ledPanel.setFadeMode(true);
-	addTextToBackingStore("SoftAP mode");
+	addTextToBackingStore("Configure at http://192.168.4.1/config");
       }
     }
 
