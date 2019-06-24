@@ -540,8 +540,6 @@ void handleConfig()
 	      "</head>"
 	      "<body>"
 	      "<form action='/submit' method='post'>"
-	      "<div><input type='checkbox' name='sta' value='sta' checked />"
-	      "<label for='sta'>Connect to an existing network?</label></div>"
 	      "<div><label for='ssid'>Connect to SSID:</label>"
 	      "<input type='text' id='ssid' name='ssid' /></div>"
 	      "<div><label for='password'>Network Password:</label>"
@@ -569,15 +567,25 @@ void handleSubmit()
   String new_latitude = server.arg("latitude");
   String new_longitude = server.arg("longitude");
   String new_autodst = server.arg("autodst");
-  String new_sta = server.arg("sta");
 
   strncpy(ssid, new_ssid.c_str(), 50);
   strncpy(password, new_password.c_str(), 50);
   lat = new_latitude.toFloat();
   lon = new_longitude.toFloat();
   defaultTimeZone = new_timezone.toInt();
-  //  autoSetDST = ... ? ***
-  staMode = true; // ***
+
+  if (new_autodst.startsWith("E")) {
+    autoSetDST = DST_EU;
+  } else if (new_autodst.startsWith("U")) {
+    autoSetDST = DST_USA;
+  } else {
+    autoSetDST = DST_NONE;
+  }
+
+  if (ssid[0])
+    staMode = true;
+  else
+    staMode = false;
 
   writePrefs();
 
