@@ -30,4 +30,28 @@ stupidly, so it's +/- 1 second accuracy).
 As of this writing, this is still a bit of a work-in-progress. The
 write-up is [going on
 Hackaday](https://hackaday.io/project/166204-tetris-display), so take
-a look there while I finish it all off...
+a look there while I finish it all off. (It's fully functional but not
+necessarily polished.)
+
+
+Setup
+=====
+
+By default, the display will broadcast its own SSID
+("tetris-display"). Connect to that network, and then browse to
+
+  http://192.168.4.1/config
+
+When you're done, press 'Save'; if the values look right, then go to
+
+  http://192.168.4.1/reset
+
+That's it! The display will reboot and come up in your set
+configuration. If you gave it an SSID/password, it should associate
+with your wireless network; find an NTP server; and automatically
+start the clock.
+
+
+
+
+
