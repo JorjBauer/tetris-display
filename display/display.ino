@@ -13,7 +13,7 @@
 #include "tetris-clock.h"
 
 #include <NTPClient.h>
-#include <Dusk2Dawn.h> // FIXME: This is a bad library, replace it
+#include <SunriseCalc.h> // from https://github.com/JorjBauer/SunriseCalc
 #include <TimeLib.h>
 
 #include <FS.h>
@@ -75,7 +75,7 @@ int8_t autoSetDST = DST_USA;
 bool staMode = true;
 // End preferences
 
-Dusk2Dawn *location = NULL;
+SunriseCalc *location = NULL;
 
 time_t lastNtpDate;
 bool isDST = false; // always default to false; will set to true
@@ -382,8 +382,13 @@ bool updateTime()
   if (autoBrightness) {
     // recalculate today's sunrise/sunset times
     lastUpdatePhase = 4;
-    sunriseAt = location->sunrise(year(lastNtpDate), month(lastNtpDate), day(lastNtpDate), isDST);
-    sunsetAt = location->sunset(year(lastNtpDate), month(lastNtpDate), day(lastNtpDate), isDST);
+    if (!location) {
+      location = new SunriseCalc(lat, lon, defaultTimeZone);
+    }
+    location->date(year(lastNtpDate), month(lastNtpDate), day(lastNtpDate), isDST);
+
+    sunriseAt = location->sunrise();
+    sunsetAt = location->sunset();    
     
     sunriseHours = sunriseAt / 60;
     sunriseMinutes = sunriseAt % 60;
@@ -768,7 +773,7 @@ void setup()
     }
   }
 
-  location = new Dusk2Dawn(lat, lon, defaultTimeZone);
+  location = NULL;
   
 #if 0
   // Debugging: dump all the SSIDs we see to the SPIFFS file /ssids.txt
