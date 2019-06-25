@@ -3,7 +3,6 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include "LEDAbstraction.h"
-#include "font_data.h"
 #include "RingPixels.h"
 #include <RingBuffer.h>
 
@@ -18,6 +17,10 @@
 #include <TimeLib.h>
 
 #include <FS.h>
+
+#include "font5x7.h"
+#define CHAR_WIDTH 6
+#define CHAR_HEIGHT 7
 
 LEDAbstraction ledPanel;
 
@@ -858,32 +861,6 @@ void setup()
   clockDriver = new TetrisClock(&ledPanel);
 }
 
-// x should be a multiple of 8
-void displayCharAt(unsigned char c, int x)
-{
-  // The display pixels are in a SNAKE PATTERN on the display: 0 is
-  // top-left, down to #7; then over to #8, up to #15; over to #16,
-  // down to #23... and so on. So in EVEN columns, it's top-to-bottom
-  // and in ODD columns it's bottom-to-top.
-
-  // The font data is in columns, where the high bit is the bottom of
-  // each column.
-
-  for (int col=0; col<CHAR_WIDTH; col++) {
-
-    // overflow prevention
-    if (x+col >= NUM_COLS)
-      continue;
-    
-    uint8_t colOfPixels = pgm_read_byte(&charData[c-32][col]);
-    for (int pix=0; pix<8; pix++) {
-      uint8_t bit = colOfPixels & (1 << pix); // top-to-bottom
-
-      ledPanel.SetLED(7-pix, x+col, bit ? CHSV(0,255,255) : CHSV(0,0,0));
-    }
-  }
-}
-
 void handleChar(char c)
 {
   switch (c) {
@@ -924,17 +901,6 @@ void handleUdp(int byteCount)
     Udp.read(packetBuffer, byteCount);
 
     handleChar(packetBuffer[0]);
-  }
-}
-
-
-void displayText(const char *s)
-{
-  int x=0;
-  while (*s) {
-    displayCharAt(*s, x);
-    x += CHAR_WIDTH+1;
-    s++;
   }
 }
 
@@ -981,11 +947,17 @@ void textLoop()
 
 void addCharToBackingStore(char c)
 {
-  for (int i=0; i<CHAR_WIDTH; i++) {
-    uint8_t d = pgm_read_byte(&(charData[c-' '][i]));
-    addColumnToBackingStore(d);
+  // Construct each column of pixels from the XPM data & push them on the backing pixel store
+  for (uint8_t x=0; x<CHAR_WIDTH; x++) {
+    uint8_t columnData = 0;
+    for (uint8_t y=0; y<CHAR_HEIGHT; y++) {
+      uint8_t d = pgm_read_byte(&font5x7_xpm[3+y][((c-' ')*CHAR_WIDTH)+x]);
+      if (d == '.') {
+	columnData |= 1<<y;
+      }
+    }
+    addColumnToBackingStore(columnData);
   }
-  addColumnToBackingStore(0);
 }
 
 void addColumnToBackingStore(uint8_t data)
