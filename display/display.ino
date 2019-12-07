@@ -857,9 +857,10 @@ void setup()
   Udp.begin(localPort);
   tcpserver.begin();
 
-  MDNS.addService("tetris", "tcp", localPort);
-  MDNS.addService("tetris", "udp", localPort);
+  MDNS.begin(name.c_str());
   MDNS.addService("http", "tcp", 80);
+  MDNS.addService("tetris", "udp", localPort);
+  MDNS.addService("tetris", "tcp", localPort);
 
   timeClient.begin();
 
@@ -988,6 +989,7 @@ void addColumnToBackingStore(uint8_t data)
 
 void loop() {
   ArduinoOTA.handle();
+  MDNS.update();
 
   server.handleClient();
 

@@ -5,6 +5,7 @@
 #include <Bounce2.h>
 #include <ESP8266WebServer.h>
 #include <WiFiServer.h>
+#include <ESP8266WebServer.h>
 
 //#define DEBUGSERIAL
 
@@ -14,11 +15,13 @@ WiFiUDP Udp;
 IPAddress clientIP;
 uint16_t clientPort;
 
-const char* ssid = "TetrisDisplay";
-const char* password = "";
+const char* ssid = "your-wifi-ssid";
+const char* password = "your-wifi-password";
 
 // 4 GPIO inputs debouncing
 Bounce *debouncer[4];
+
+ESP8266WebServer server(80); //HTTP server on port 80
 
 /* Settings in Arduino IDE:
    Generic ESP8266 module
@@ -38,9 +41,20 @@ Bounce *debouncer[4];
    Port: <via wifi after first attempt>
 */
 
+void handleRoot() {
+  // Debugging: tell me what you see on MDNS
+  String status = String("<html><pre>");
+
+  status += String("\n\nClient IP address is ") + clientIP.toString() + String("\n");
+  status += String("</html>");
+
+  server.send(200, "text/html", status.c_str());
+}
+
 void setup() {
 #ifdef DEBUGSERIAL
   Serial.begin(115200);
+  Serial.println("startup");
 #else
   // make GPIO 1 (TX) and 3 (RX) both GPIO (FUNCTION_3) instead of serial
   // (which is FUNCTION_0).
@@ -111,6 +125,9 @@ void setup() {
 
   Udp.begin(49152); // arbitrary ephemeral port
 
+  server.on("/", handleRoot);
+  server.begin();
+
   // 4 GPIO pins debounced
   for (int i=0; i<4; i++) {
     debouncer[i] = new Bounce();
@@ -120,14 +137,31 @@ void setup() {
 }
 
 bool reconnect() {
-  int n = MDNS.queryService("tetris", "tcp");
+  // For some reason, the display isn't properly announcing its
+  // "_tetris._udp" or "_tetris._tcp" services. So we'll piggyback on
+  // one that *is* working: _http._tcp. And we'll hard-code the port. :shrug:
+  int n = MDNS.queryService("http", "tcp");
   if (n == 0) {
     return false;
   } else {
-    // Assumption: the TCP and UDP services are on the same port on the display
-    clientIP = MDNS.IP(0);
-    clientPort = MDNS.port(0);
-    return(tcpclient.connect(MDNS.IP(0), MDNS.port(0)));
+    // FIXME: hard-coded port b/c MDNS isn't doing what we want on the display
+    clientPort = 8267;
+    // Find the one that begins with "tetris-display" and use its IP
+    bool found = false;
+    for (int i=0; i<n; i++) {
+      String resolvedName = MDNS.hostname(i);
+      if (resolvedName.startsWith("tetris-display")) {
+	found = true;
+	clientIP = MDNS.IP(i);
+	break;
+      }
+    }
+    if (!found) {
+      // Guess it's using the static default?
+      clientIP = (IPAddress)(192,168,4,1);
+      clientPort = 8267;
+    }
+    return(tcpclient.connect(clientIP, clientPort));
   }
 }
 
@@ -171,6 +205,7 @@ void handleButtonPress(int i)
 
 void loop() {
   ArduinoOTA.handle();
+  server.handleClient();
 
   for (int i=0; i<4; i++) {
     debouncer[i]->update();
