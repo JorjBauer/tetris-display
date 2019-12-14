@@ -11,6 +11,7 @@
 
 #include "tetris.h"
 #include "tetris-clock.h"
+#include "snake.h"
 
 #include <NTPClient.h>
 #include <SunriseCalc.h> // from https://github.com/JorjBauer/SunriseCalc
@@ -42,10 +43,12 @@ RingBuffer backingText(BACKINGTEXTSIZE);
 #define BACKINGPIXELSIZE 24
 RingPixels backingPixels(NUM_ROWS, BACKINGPIXELSIZE);
 
-Tetris engine;
+Tetris tetrisEngine;
+Snake snakeEngine;
 bool needsRefresh = true;
 bool checkLines = false;
 bool running = false;
+bool currentGameIsTetris = false;
 
 bool fsRunning = false; // set to true when SPIFFS is set up
 
@@ -178,7 +181,7 @@ void handleStatus() {
 	    "Connected" : 
 	    "Not connected" ) +
     String("</div><div>Score: ") + 
-    String(engine.score()) + 
+    String(currentGameIsTetris ? tetrisEngine.score() : snakeEngine.score()) + 
     String("</div><div>Clock showing: ") + 
     String(clockShowing ? "true" : "false") + 
     String("</div><div>Clock restarting: ") +
@@ -219,7 +222,10 @@ void handleTetris() {
 }
 
 void handleLeft() {
-  engine.MoveLeft();
+  if (currentGameIsTetris)
+    tetrisEngine.MoveLeft();
+  else
+    snakeEngine.TurnLeft();
   String s = "ok";
   server.send(200, "text/html", s);
   needsRefresh = true;
@@ -228,7 +234,10 @@ void handleLeft() {
 }
 
 void handleRight() {
-  engine.MoveRight();
+  if (currentGameIsTetris)
+    tetrisEngine.MoveRight();
+  else
+    snakeEngine.TurnRight();
   String s = "ok";
   server.send(200, "text/html", s);
   needsRefresh = true;
@@ -237,7 +246,8 @@ void handleRight() {
 }
 
 void handleRotateLeft() {
-  engine.RotateLeft();
+  if (currentGameIsTetris)
+    tetrisEngine.RotateLeft();
   String s = "ok";
   server.send(200, "text/html", s);
   needsRefresh = true;
@@ -246,7 +256,8 @@ void handleRotateLeft() {
 }
 
 void handleRotateRight() {
-  engine.RotateRight();
+  if (currentGameIsTetris)
+    tetrisEngine.RotateRight();
   String s = "ok";
   server.send(200, "text/html", s);
   needsRefresh = true;
@@ -255,7 +266,10 @@ void handleRotateRight() {
 }
 
 void handleStep() {
-  engine.Step();
+  if (currentGameIsTetris)
+    tetrisEngine.Step();
+  else
+    snakeEngine.Step();
   String s = "ok";
   server.send(200, "text/html", s);
   needsRefresh = true;
@@ -264,8 +278,10 @@ void handleStep() {
 }
 
 void handleDrop() {
-  if (!engine.Drop()) {
-    gameOver();
+  if (currentGameIsTetris) {
+    if (!tetrisEngine.Drop()) {
+      gameOver();
+    }
   }
   String s = "ok";
   server.send(200, "text/html", s);
@@ -276,7 +292,11 @@ void handleDrop() {
 
 void handleRestart() {
   currentMode = mode_tetris;
-  engine.Init();
+  if (currentGameIsTetris) {
+    tetrisEngine.Init();
+  } else {
+    snakeEngine.Init();
+  }
   String s = "ok";
   server.send(200, "text/html", s);
   needsRefresh = true;
@@ -827,7 +847,8 @@ void setup()
   addTextToBackingStore(buf);
 #endif
 
-  engine.Init();
+  tetrisEngine.Init();
+  snakeEngine.Init();
 
   server.on("/", handleRoot);
   server.on("/l", handleLeft);
@@ -871,32 +892,46 @@ void handleChar(char c)
 {
   switch (c) {
   case 'a': 
-    engine.MoveLeft();
+    if (currentGameIsTetris) 
+      tetrisEngine.MoveLeft();
+    else
+      snakeEngine.TurnLeft();
     break;
   case 'd':
-    engine.MoveRight();
+    if (currentGameIsTetris)
+      tetrisEngine.MoveRight();
+    else
+      snakeEngine.TurnRight();
     break;
   case 'q': 
-    engine.RotateLeft();
+    if (currentGameIsTetris)
+      tetrisEngine.RotateLeft();
     break;
   case 'e':
-    engine.RotateRight();
+    if (currentGameIsTetris)
+      tetrisEngine.RotateRight();
     break;
   case '!':
     udpRunStarted = true; // We're playing tetris in real-time w/o a TCP connection
     break;
   case 's':
-    if (!engine.Step()) {
-      gameOver();
+    if (currentGameIsTetris) {
+      if (!tetrisEngine.Step()) {
+	gameOver();
+      }
+      checkLines = true;
+    } else {
+      if (!snakeEngine.Step()) {
+	gameOver();
+      }
     }
-    checkLines = true;
     break;
   case ' ':
-    if (!engine.Drop()) {
+    if (currentGameIsTetris && !tetrisEngine.Drop()) {
       // restart
       gameOver();
+      checkLines = true;
     }
-    checkLines = true;
     break;
   }
 }
@@ -1062,30 +1097,37 @@ void loop() {
       ((tcpclient && tcpclient.connected()) ||
        udpRunStarted)) {
     if (millis() >= nextTick) {
-      if (!engine.Step()) {
-	gameOver();
+      if (currentGameIsTetris) {
+	if (!tetrisEngine.Step()) {
+	  gameOver();
+	}
+      } else {
+	if (!snakeEngine.Step()) {
+	  gameOver();
+	}
       }
-      checkLines = true;
+      if (currentGameIsTetris)
+	checkLines = true;
       needsRefresh = true;
       int32_t nextDelay = 500;
-      uint32_t curScore = engine.score();
+      uint32_t curScore = currentGameIsTetris ? tetrisEngine.score() : snakeEngine.score();
       nextDelay = 500 - ((curScore > 49 ? 49 : curScore)*10);
       nextTick = millis() + nextDelay;
     }
   }
 
   if (currentMode == mode_tetris && needsRefresh) {
-    if (engine.changedPieceThisTurn()) {
+    if (currentGameIsTetris && tetrisEngine.changedPieceThisTurn()) {
       nextTick = millis() + 750;
     }
 
-    if (checkLines) {
-      uint8_t f = engine.numFilledLines();
+    if (currentGameIsTetris && checkLines) {
+      uint8_t f = tetrisEngine.numFilledLines();
       if (f) {
 	for (int c=0; c<4; c++) { // flash off-on off-on
 	  for (int i=0; i<f; i++) { // for each solved line
 	    // This line needs to flash
-	    uint8_t l = engine.lastFilledLineIndex(i);
+	    uint8_t l = tetrisEngine.lastFilledLineIndex(i);
 
 	    for (int x=0; x<XSIZE; x++) {
 	      ledPanel.SetLED(x, l, (c & 1) ? CRGB::White : CRGB::Black);
@@ -1096,7 +1138,7 @@ void loop() {
 	}
       }
       // have to reset the drop timer to compensate for time that just elapsed
-      if (engine.changedPieceThisTurn()) {
+      if (tetrisEngine.changedPieceThisTurn()) {
 	nextTick = millis() + 750;
       }
       checkLines = false;
@@ -1104,7 +1146,7 @@ void loop() {
 
     for (int y=0; y<YSIZE; y++) {
       for (int x=0; x<XSIZE; x++) {
-	uint8_t sq = engine.GetSquare(x,y);
+	uint8_t sq = currentGameIsTetris ? tetrisEngine.GetSquare(x,y) : snakeEngine.GetSquare(x,y);
 	CRGB outColor;
 	switch (sq) {
 	case 0:
@@ -1125,6 +1167,7 @@ void loop() {
 	  outColor = CHSV(HUE_AQUA,255,255);
 	  break;
 	case 'L':
+	case '.': // food in snake game
 	  outColor = CHSV(HUE_BLUE,255,255);
 	  break;
 	case 'J':
@@ -1194,7 +1237,7 @@ void gameOver() {
     tcpclient.stop();
   }
   char buf[25];
-  sprintf(buf, "Score: %d     ", engine.score());
+  sprintf(buf, "Score: %d     ", currentGameIsTetris ? tetrisEngine.score() : snakeEngine.score());
   addTextToBackingStore(buf);
 }
 

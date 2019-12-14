@@ -98,7 +98,7 @@ tetTemplate tetromino[NUMPIECES] = {
 
 
 
-int RandomLessThan(int limit)
+static int RandomLessThan(int limit)
 {
 #ifdef UNIX
   int r, d = RAND_MAX / limit;
