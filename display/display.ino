@@ -48,7 +48,6 @@ Snake snakeEngine;
 bool needsRefresh = true;
 bool checkLines = false;
 bool running = false;
-bool currentGameIsTetris = false;
 
 bool fsRunning = false; // set to true when SPIFFS is set up
 
@@ -101,10 +100,16 @@ enum {
   mode_text    = 0,
   mode_tetris  = 1,
   mode_clock   = 2,
-  mode_startup = 3
+  mode_startup = 3,
+  mode_pickGame = 4,
+  mode_snake   = 5
 };
 
 uint8_t currentMode = mode_startup;
+uint8_t currentGameSelection = mode_tetris; // for the menu
+uint32_t pickGameTimeout;
+
+#define MENUTIMEOUT 120000
 
 /* Settings in Arduino IDE:
    Generic ESP8266 module
@@ -131,9 +136,9 @@ void handleRoot() {
 "<p>Embedded pages:</p>"
 "<ul>"
 "<li>/l, /r, /rl, /rr, /d, /s: pages for tetris (left, right, rotate left/right, drop, step)</li>"
-"<li><a href='/init'>/init</a>: restart Tetris</li>"
+"<li><a href='/init'>/init</a>: pick which game to play</li>"
 "<li><a href='/tetris'>/tetris</a>: play tetris using in-browser controls</li>"
-"<li><a href='/status'>/status</a>: show game status</li>"
+"<li><a href='/status'>/status</a>: show current status</li>"
 "<li><a href='/test'>/test</a>: LED test mode</li>"
 "<li><a href='/text?s=hi'>/text</a>: GET with argument 's' to display text</li>"
 "<li><a href='/reset'>/reset</a>: reboots the display</li>"
@@ -180,8 +185,16 @@ void handleStatus() {
     String( (tcpclient && tcpclient.connected()) ? 
 	    "Connected" : 
 	    "Not connected" ) +
+    String("</div><div>Mode: ") + 
+    String( (currentMode == mode_text) ? "mode_text" : 
+	    (currentMode == mode_tetris) ? "mode_tetris" :
+	    (currentMode == mode_clock) ? "mode_clock" :
+	    (currentMode == mode_startup) ? "mode_startup" : 
+	    (currentMode == mode_pickGame) ? "mode_pickGame" :
+	    (currentMode == mode_snake) ? "mode_snake" :
+	    "unknown mode") +
     String("</div><div>Score: ") + 
-    String(currentGameIsTetris ? tetrisEngine.score() : snakeEngine.score()) + 
+    String(currentMode == mode_tetris ? tetrisEngine.score() : snakeEngine.score()) +  // FIXME: might not be either mode
     String("</div><div>Clock showing: ") + 
     String(clockShowing ? "true" : "false") + 
     String("</div><div>Clock restarting: ") +
@@ -222,9 +235,9 @@ void handleTetris() {
 }
 
 void handleLeft() {
-  if (currentGameIsTetris)
+  if (currentMode == mode_tetris)
     tetrisEngine.MoveLeft();
-  else
+  else if (currentMode == mode_snake)
     snakeEngine.TurnLeft();
   String s = "ok";
   server.send(200, "text/html", s);
@@ -234,9 +247,9 @@ void handleLeft() {
 }
 
 void handleRight() {
-  if (currentGameIsTetris)
+  if (currentMode == mode_tetris)
     tetrisEngine.MoveRight();
-  else
+  else if (currentMode == mode_snake)
     snakeEngine.TurnRight();
   String s = "ok";
   server.send(200, "text/html", s);
@@ -246,7 +259,7 @@ void handleRight() {
 }
 
 void handleRotateLeft() {
-  if (currentGameIsTetris)
+  if (currentMode == mode_tetris)
     tetrisEngine.RotateLeft();
   String s = "ok";
   server.send(200, "text/html", s);
@@ -256,7 +269,7 @@ void handleRotateLeft() {
 }
 
 void handleRotateRight() {
-  if (currentGameIsTetris)
+  if (currentMode == mode_tetris)
     tetrisEngine.RotateRight();
   String s = "ok";
   server.send(200, "text/html", s);
@@ -266,9 +279,9 @@ void handleRotateRight() {
 }
 
 void handleStep() {
-  if (currentGameIsTetris)
+  if (currentMode == mode_tetris)
     tetrisEngine.Step();
-  else
+  else if (currentMode == mode_snake)
     snakeEngine.Step();
   String s = "ok";
   server.send(200, "text/html", s);
@@ -278,7 +291,7 @@ void handleStep() {
 }
 
 void handleDrop() {
-  if (currentGameIsTetris) {
+  if (currentMode == mode_tetris) {
     if (!tetrisEngine.Drop()) {
       gameOver();
     }
@@ -290,11 +303,10 @@ void handleDrop() {
   running = true;
 }
 
-void handleRestart() {
-  currentMode = mode_tetris;
-  if (currentGameIsTetris) {
+void handleInit() {
+  if (currentMode == mode_tetris) {
     tetrisEngine.Init();
-  } else {
+  } else if (currentMode == mode_snake) {
     snakeEngine.Init();
   }
   String s = "ok";
@@ -428,7 +440,12 @@ bool updateTime()
       // FIXME: could fade in slower than this when near sunrise/sunset ***
       ledPanel.setBrightness(40);
     } else {
-      ledPanel.setBrightness(1);
+      if (curHour > 12 && curHour < 21) {
+	// A little generous: find an in-between brightness for "if we have the lights on" hours
+	ledPanel.setBrightness(10);
+      } else {
+	ledPanel.setBrightness(1);
+      }
     }
   }
 
@@ -857,7 +874,7 @@ void setup()
   server.on("/rr", handleRotateRight);
   server.on("/d", handleDrop);
   server.on("/s", handleStep);
-  server.on("/init", handleRestart);
+  server.on("/init", handleInit);
   server.on("/tetris", handleTetris);
   server.on("/test", handleTest);
   server.on("/text", handleText);
@@ -892,42 +909,54 @@ void handleChar(char c)
 {
   switch (c) {
   case 'a': 
-    if (currentGameIsTetris) 
+    if (currentMode == mode_tetris) 
       tetrisEngine.MoveLeft();
-    else
+    else if (currentMode == mode_snake)
       snakeEngine.TurnLeft();
+    else if (currentMode == mode_pickGame) {
+      if (currentGameSelection == mode_tetris) {
+	currentGameSelection = mode_snake;
+      } else {
+	currentGameSelection = mode_tetris;
+      }
+      pickGameTimeout = millis() + MENUTIMEOUT;
+    }
     break;
   case 'd':
-    if (currentGameIsTetris)
+    if (currentMode == mode_tetris)
       tetrisEngine.MoveRight();
-    else
+    else if (currentMode == mode_snake)
       snakeEngine.TurnRight();
+    else if (currentMode = mode_pickGame) {
+      currentMode = currentGameSelection;
+      handleInit();
+    }
     break;
   case 'q': 
-    if (currentGameIsTetris)
+    if (currentMode == mode_tetris)
       tetrisEngine.RotateLeft();
     break;
   case 'e':
-    if (currentGameIsTetris)
+    if (currentMode == mode_tetris)
       tetrisEngine.RotateRight();
     break;
   case '!':
     udpRunStarted = true; // We're playing tetris in real-time w/o a TCP connection
     break;
   case 's':
-    if (currentGameIsTetris) {
+    if (currentMode == mode_tetris) {
       if (!tetrisEngine.Step()) {
 	gameOver();
       }
       checkLines = true;
-    } else {
+    } else if (currentMode == mode_snake){
       if (!snakeEngine.Step()) {
 	gameOver();
       }
     }
     break;
   case ' ':
-    if (currentGameIsTetris && !tetrisEngine.Drop()) {
+    if ((currentMode == mode_tetris) && !tetrisEngine.Drop()) {
       // restart
       gameOver();
       checkLines = true;
@@ -1047,7 +1076,8 @@ void loop() {
     tcpclient = tcpserver.available();
     tcpclient.print("Hello");
     tcpclient.flush();
-    handleRestart();
+    currentMode = mode_pickGame;
+    pickGameTimeout = millis() + MENUTIMEOUT;
   }
   if (tcpclient && tcpclient.available() > 0) {
     char c = tcpclient.read();
@@ -1093,11 +1123,11 @@ void loop() {
     }
   }
 
-  if (currentMode == mode_tetris && 
+  if ((currentMode == mode_tetris || currentMode == mode_snake) && 
       ((tcpclient && tcpclient.connected()) ||
        udpRunStarted)) {
     if (millis() >= nextTick) {
-      if (currentGameIsTetris) {
+      if (currentMode == mode_tetris) {
 	if (!tetrisEngine.Step()) {
 	  gameOver();
 	}
@@ -1106,22 +1136,22 @@ void loop() {
 	  gameOver();
 	}
       }
-      if (currentGameIsTetris)
+      if (currentMode == mode_tetris)
 	checkLines = true;
       needsRefresh = true;
       int32_t nextDelay = 500;
-      uint32_t curScore = currentGameIsTetris ? tetrisEngine.score() : snakeEngine.score();
+      uint32_t curScore = (currentMode == mode_tetris) ? tetrisEngine.score() : snakeEngine.score();
       nextDelay = 500 - ((curScore > 49 ? 49 : curScore)*10);
       nextTick = millis() + nextDelay;
     }
   }
 
   if (currentMode == mode_tetris && needsRefresh) {
-    if (currentGameIsTetris && tetrisEngine.changedPieceThisTurn()) {
+    if (tetrisEngine.changedPieceThisTurn()) {
       nextTick = millis() + 750;
     }
 
-    if (currentGameIsTetris && checkLines) {
+    if (checkLines) {
       uint8_t f = tetrisEngine.numFilledLines();
       if (f) {
 	for (int c=0; c<4; c++) { // flash off-on off-on
@@ -1143,10 +1173,13 @@ void loop() {
       }
       checkLines = false;
     }
+  }
 
+  if ((currentMode == mode_tetris || currentMode == mode_snake) &&
+      needsRefresh) {
     for (int y=0; y<YSIZE; y++) {
       for (int x=0; x<XSIZE; x++) {
-	uint8_t sq = currentGameIsTetris ? tetrisEngine.GetSquare(x,y) : snakeEngine.GetSquare(x,y);
+	uint8_t sq = (currentMode == mode_tetris) ? tetrisEngine.GetSquare(x,y) : snakeEngine.GetSquare(x,y);
 	CRGB outColor;
 	switch (sq) {
 	case 0:
@@ -1188,6 +1221,46 @@ void loop() {
 
   if (currentMode == mode_text || currentMode == mode_startup) {
     textLoop();
+  }
+
+  if (currentMode == mode_pickGame) {
+    // Draw the basic menu
+    ledPanel.clear(true);
+
+    // Tetris mode
+    ledPanel.SetLED(2, 10, CHSV(HUE_BLUE,255,255));
+    ledPanel.SetLED(3, 10, CHSV(HUE_BLUE,255,255));
+    ledPanel.SetLED(4, 10, CHSV(HUE_BLUE,255,255));
+    ledPanel.SetLED(3, 9, CHSV(HUE_BLUE,255,255));
+    ledPanel.SetLED(4, 9, CHSV(HUE_YELLOW,255,255));
+    ledPanel.SetLED(5, 9, CHSV(HUE_YELLOW,255,255));
+    ledPanel.SetLED(5, 10, CHSV(HUE_YELLOW,255,255));
+    ledPanel.SetLED(4, 8, CHSV(HUE_YELLOW,255,255));
+
+    // Snake mode
+    ledPanel.SetLED(2, 22, CHSV(HUE_GREEN,255,255));
+    ledPanel.SetLED(3, 22, CHSV(HUE_GREEN,255,255));
+    ledPanel.SetLED(4, 22, CHSV(HUE_GREEN,255,255));
+    ledPanel.SetLED(6, 22, CHSV(HUE_BLUE,255,255));
+
+    // Draw the selection
+    uint8_t boxStartY = 0;
+    if (currentGameSelection == mode_tetris) {
+      boxStartY = 6;
+    } else if (currentGameSelection == mode_snake) {
+      boxStartY = 19;
+    }
+    for (int x=0; x<=7; x++) {
+      for (int y=boxStartY; y<=boxStartY + 6; y++) {
+	if (x==0 || x==7 || y==boxStartY || y==boxStartY+6)
+	  ledPanel.SetLED(x,y,CHSV(HUE_RED,255,255));
+      }
+    }
+
+    if (millis() >= pickGameTimeout) {
+      // Timed out waiting for input; go back to the clock
+      startClockMode();
+    }
   }
 
   EVERY_N_MILLISECONDS(35) {
@@ -1237,7 +1310,7 @@ void gameOver() {
     tcpclient.stop();
   }
   char buf[25];
-  sprintf(buf, "Score: %d     ", currentGameIsTetris ? tetrisEngine.score() : snakeEngine.score());
+  sprintf(buf, "Score: %d     ", (currentMode == mode_tetris) ? tetrisEngine.score() : snakeEngine.score());
   addTextToBackingStore(buf);
 }
 

@@ -24,7 +24,7 @@ class LEDAbstraction {
   void setFadeMode(bool f);
   void stepFader();
 
-  void clear();
+  void clear(bool suppressRedraw = false);
   void clearByScrolling();
 
   void setBrightness(uint8_t b);

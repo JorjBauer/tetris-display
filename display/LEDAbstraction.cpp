@@ -10,12 +10,13 @@ LEDAbstraction::~LEDAbstraction()
 {
 }
 
-void LEDAbstraction::clear()
+void LEDAbstraction::clear(bool suppressRedraw)
 {
   for (int i=0; i<NUM_LEDS; i++) {
     leds[i] = CRGB::Black;
   }
-  FastLED.show();
+  if (!suppressRedraw)
+    FastLED.show();
 }
 
 // disables fademode
