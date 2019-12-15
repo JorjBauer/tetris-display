@@ -194,12 +194,11 @@ void Snake::SetupTest()
 void Snake::AddRandomFood()
 {
   int8_t newX, newY;
-  do {
-    newX = RandomLessThan(XSIZE);
-    newY = RandomLessThan(YSIZE);
-  } while (board[newY][newX]);
-
-  board[newY][newX] = FOOD;
-  numFoodDisplayed++;
-
+  newX = RandomLessThan(XSIZE);
+  newY = RandomLessThan(YSIZE);
+  if (!board[newY][newX]) {
+    // If we pick a space that's already filled, then just defer.
+    board[newY][newX] = FOOD;
+    numFoodDisplayed++;
+  }
 }

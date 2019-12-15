@@ -1141,7 +1141,12 @@ void loop() {
       needsRefresh = true;
       int32_t nextDelay = 500;
       uint32_t curScore = (currentMode == mode_tetris) ? tetrisEngine.score() : snakeEngine.score();
-      nextDelay = 500 - ((curScore > 49 ? 49 : curScore)*10);
+      if (currentMode == mode_tetris) {
+	nextDelay = 500 - ((curScore > 49 ? 49 : curScore)*10);
+      } else {
+	nextDelay -= curScore*5;
+	if (nextDelay < 10) nextDelay = 10;
+      }
       nextTick = millis() + nextDelay;
     }
   }
