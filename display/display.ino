@@ -97,12 +97,13 @@ bool autoBrightness = true;
 int32_t lastCorrection = 0; // When we NTP, save the # of seconds drifted
 
 enum {
-  mode_text    = 0,
-  mode_tetris  = 1,
-  mode_clock   = 2,
-  mode_startup = 3,
+  mode_text     = 0,
+  mode_tetris   = 1,
+  mode_clock    = 2,
+  mode_startup  = 3,
   mode_pickGame = 4,
-  mode_snake   = 5
+  mode_snake    = 5,
+  mode_tree     = 6
 };
 
 uint8_t currentMode = mode_startup;
@@ -110,6 +111,13 @@ uint8_t currentGameSelection = mode_tetris; // for the menu
 uint32_t pickGameTimeout;
 
 #define MENUTIMEOUT 120000
+
+#define MAX_TREE_BLINKERS 8
+uint8_t currentTreeBlinkers;
+uint32_t treeBlinkerTime[MAX_TREE_BLINKERS];
+uint8_t treeBlinkerState[MAX_TREE_BLINKERS];
+uint8_t treeBlinkerMax[MAX_TREE_BLINKERS];
+offset treeBlinkers[MAX_TREE_BLINKERS];
 
 /* Settings in Arduino IDE:
    Generic ESP8266 module
@@ -144,6 +152,7 @@ void handleRoot() {
 "<li><a href='/reset'>/reset</a>: reboots the display</li>"
 "<li><a href='/startclock'>/startclock</a>: start running a tetris-style clock</li>"
 "<li><a href='/testclock?t=0123'>/testclock</a>: test clock display with argument 't'</li>"
+"<li><a href='/starttree'>/starttree</a>: display holiday tree</li>"
 "<li><a href='/color'>/color</a>: toggle color wheel mode on/off</li>"
 "<li><a href='/brightness?b=40'>/brightness</a>: GET with argument 'b' to set brightness (1-255)</li>"
 "<li><a href='/autobrightness'>/autobrightness</a>: toggle auto-brightness on or off</li>"
@@ -192,6 +201,7 @@ void handleStatus() {
 	    (currentMode == mode_startup) ? "mode_startup" : 
 	    (currentMode == mode_pickGame) ? "mode_pickGame" :
 	    (currentMode == mode_snake) ? "mode_snake" :
+	    (currentMode == mode_tree) ? "mode_tree" :
 	    "unknown mode") +
     String("</div><div>Score: ") + 
     String(currentMode == mode_tetris ? tetrisEngine.score() : snakeEngine.score()) +  // FIXME: might not be either mode
@@ -225,7 +235,7 @@ void handleTetris() {
  server.send(200, "text/html", 
 "<!DOCTYPE html><html>"
 "<head>"
-"<script src='http://ajax.googleapis.com/ajax/libs/jquery/1.3.1/jquery.min.js' type='text/javascript'>\</script>"
+"<script src='http://ajax.googleapis.com/ajax/libs/jquery/1.3.1/jquery.min.js' type='text/javascript'></script>"
 "<script type='text/javascript'>"
 "function keyDownHandler(event) { var keyPressed =String.fromCharCode(event.keyCode);if (keyPressed=='A') {$.ajax({ url: '/l', async: false });}if (keyPressed=='D') {$.ajax({ url: '/r', async: false });}if (keyPressed=='Q') {$.ajax({ url: '/rl', async: false });}if (keyPressed=='E') {$.ajax({ url: '/rr', async: false });}if (keyPressed=='S') {$.ajax({ url: '/s', async: false });}if (keyPressed==' ') {$.ajax({ url: '/d', async: false });}}"
 "document.addEventListener('keydown',keyDownHandler, false);"
@@ -450,6 +460,26 @@ bool updateTime()
   }
 
   return true;
+}
+
+void startTreeMode()
+{
+  currentMode = mode_tree;
+  ledPanel.setFadeMode(false);
+  ledPanel.clear();
+  ledPanel.Update();
+
+  currentTreeBlinkers = 0;
+
+  drawTree();
+
+  nextTick = millis();
+}
+
+void handleStartTree()
+{
+  server.send(200, "text/html", "ok");
+  startTreeMode();
 }
 
 void startClockMode()
@@ -889,6 +919,7 @@ void setup()
   server.on("/file", handleFile);
   server.on("/config", handleConfig);
   server.on("/submit", handleSubmit);
+  server.on("/starttree", handleStartTree);
 
   server.begin();
 
@@ -1268,6 +1299,10 @@ void loop() {
     }
   }
 
+  if (currentMode == mode_tree) {
+    handleTreeBlinkers();
+  }
+
   EVERY_N_MILLISECONDS(35) {
     if (colorWheelMode) {
       ledPanel.stepColorWheel();
@@ -1343,4 +1378,99 @@ bool europeIsTodayDST(int8_t day, int8_t month, int8_t dow)
   if (month == 10) return previousSunday < 25;
 
   return false; // notreached
+}
+
+void createNewTreeBlinker()
+{
+  int newY, newX;
+  do {    
+    newY = random(10); // 0-10, inclusive
+    if (newY < 2) {
+      newX = random(1) + 3;
+    } else if (newY < 6) {
+      newX = random(3) + 2;
+    } else if (newY < 9) {
+      newX = random(5) + 1;
+    } else {
+      newX = random(7);
+    }
+    newY += 16; // offset to the top of the tree
+  } while ((CRGB) ledPanel.GetLED(newX, newY) != (CRGB) CRGB::Green);
+  
+  treeBlinkers[currentTreeBlinkers].x = newX;
+  treeBlinkers[currentTreeBlinkers].y = newY;
+  treeBlinkerTime[currentTreeBlinkers] = millis();
+  treeBlinkerState[currentTreeBlinkers] = 0;
+  treeBlinkerMax[currentTreeBlinkers] = 10 + random(4);
+  currentTreeBlinkers++;
+  ledPanel.SetLED(newX, newY, CRGB::Black);
+}
+
+void handleTreeBlinkers()
+{
+  if (currentTreeBlinkers < MAX_TREE_BLINKERS) {
+    createNewTreeBlinker();
+  }
+
+  // Loop backwards so we can easily prune the blinker arrays
+  for (int i=currentTreeBlinkers-1; i>=0; i--) {
+    int x = treeBlinkers[i].x;
+    int y = treeBlinkers[i].y;
+    if (millis() >= treeBlinkerTime[i]) {
+      treeBlinkerTime[i] = millis() + 250;
+      treeBlinkerState[i]++;
+      if (treeBlinkerState[i] != treeBlinkerMax[i]) {
+	ledPanel.SetLED(x, y, (random(100) >= 50) ? CRGB::Blue : CRGB::White);
+      } else {
+	ledPanel.SetLED(x, y, CRGB::Green);
+	// Remove it from the arrays. Move everything down to overwrite this.
+	for (int j=i; j<MAX_TREE_BLINKERS-1; j++) {
+	  treeBlinkers[j] = treeBlinkers[j+1];
+	  treeBlinkerTime[j] = treeBlinkerTime[j+1];
+	  treeBlinkerState[j] = treeBlinkerState[j+1];
+	  treeBlinkerMax[i] = treeBlinkerMax[i+1];
+	}
+	currentTreeBlinkers--;
+      }
+    }
+  }
+}
+
+void drawTree()
+{
+  // trunk: y=28..30 x=3..4
+  // tree: 
+  //   y=25..27 x=0..7
+  //   y=22..24 x=1..6
+  //   y=18..21 x=2..5
+  //   y=16..17 x=3..4
+
+  for (int y=28;y<=30;y++) {
+    for (int x=3;x<=4;x++) {
+      ledPanel.SetLED(x, y, CRGB::Brown);
+    }
+  }
+  for (int y=25; y<=27; y++) {
+    for (int x=0; x<=7; x++) {
+      ledPanel.SetLED(x, y, CRGB::Green);
+    }
+  }
+
+  for (int y=22; y<=24; y++) {
+    for (int x=1; x<=6; x++) {
+      ledPanel.SetLED(x, y, CRGB::Green);
+    }
+  }
+
+  for (int y=18; y<=21; y++) {
+    for (int x=2; x<=5; x++) {
+      ledPanel.SetLED(x, y, CRGB::Green);
+    }
+  }
+
+  for (int y=16; y<=17; y++) {
+    for (int x=3; x<=4; x++) {
+      ledPanel.SetLED(x, y, CRGB::Green);
+    }
+  }
 }
