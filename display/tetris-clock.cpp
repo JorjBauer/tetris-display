@@ -22,6 +22,33 @@ typedef struct _clockNumTemplate {
   offset position[4];
 } clockNumTemplate;
 
+typedef struct _treePieceTemplateItem {
+  uint8_t pieceIndex;
+  uint8_t rotation;
+  offset position;
+} treePieceTemplateItem;
+
+#define NUMTREEPIECES 17
+treePieceTemplateItem treeTemplate[NUMTREEPIECES] = {
+  { P_O, 0, {3, 30} },
+  { P_J, 2, {2, 27} },
+  { P_L, 3, {4, 27} },
+  { P_L, 2, {1, 26} },
+  { P_O, 0, {5, 27} },
+  { P_L, 3, {7, 26} },
+  { P_I, 0, {1, 25} },
+  { P_L, 1, {4, 24} },
+  { P_J, 3, {6, 23} },
+  { P_L, 1, {1, 23} },
+  { P_S, 1, {3, 23} },
+  { P_J, 2, {4, 22} },
+  { P_L, 0, {3, 21} },
+  { P_Z, 1, {3, 19} },
+  { P_I, 1, {5, 19} },
+  { P_J, 1, {2, 19} },
+  { P_O, 0, {3, 17} },
+};
+
 // The origin of each of these numbers is the upper-left corner. The 
 // "position" values are relative to that point, leading to the origin
 // of each of the pieces (when properly placed). It's important that 
@@ -75,6 +102,8 @@ TetrisClock::TetrisClock(LEDAbstraction *p)
   hourCounter = 0;
   minuteCounter = 0;
   secondCounter = 0;
+
+  isInTreeMode = false;
 }
 
 TetrisClock::~TetrisClock()
@@ -210,7 +239,11 @@ unsigned long TetrisClock::step()
       currentRotation = 0;
     } else {
       // Ain't no more pieces; all done!
-      return 0;
+      if (isInTreeMode) {
+	return 99999; // FIXME: terrible handling of magic constant
+      } else {
+	return 0;
+      }
     }
   }
 
@@ -264,7 +297,7 @@ unsigned long TetrisClock::step()
   return retDelay;
 }
 
-uint32_t TetrisClock::setTime(uint8_t h, uint8_t m, uint8_t s=0)
+uint32_t TetrisClock::setTime(uint8_t h, uint8_t m, uint8_t s=0, uint8_t curMon=0, uint8_t curDay=0)
 {
   // return the old time
   uint32_t ret = hourCounter;
@@ -278,10 +311,26 @@ uint32_t TetrisClock::setTime(uint8_t h, uint8_t m, uint8_t s=0)
   minuteCounter = m;
   secondCounter = s;
 
+  if (curMon && curDay) {
+    currentMonth = curMon;
+    currentDay = curDay;
+  }
+
   // update the displayed time
   startDisplay();
 
   return ret;
+}
+
+void TetrisClock::queueTreePieces()
+{
+  isInTreeMode = true;
+  for (int i=0; i<NUMTREEPIECES; i++) {
+    queuePieceToDrop(treeTemplate[i].pieceIndex, colorOfPiece(P_O),
+		     treeTemplate[i].position.x,
+		     treeTemplate[i].position.y,
+		     treeTemplate[i].rotation);
+  }
 }
 
 void TetrisClock::startDisplay()
@@ -298,6 +347,16 @@ void TetrisClock::startDisplay()
   uint8_t curH = hourCounter;
   uint8_t curM = minuteCounter;
   uint8_t curS = secondCounter;
+
+  if ( ((currentMonth == 12 && currentDay >= 16) ||
+	(currentMonth == 1 && currentDay <= 6)) &&
+       (minuteCounter == 15 || minuteCounter == 30 || minuteCounter == 45) ) {
+    // draw a tree instead of the clock
+    queueTreePieces();
+    return;
+  }
+
+  isInTreeMode = false;
 
   // the height of the minutes is the height of the taller of the numbers
   uint8_t minsHeight = MAX(numberHeights[curM%10], numberHeights[curM/10]);

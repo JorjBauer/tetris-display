@@ -118,6 +118,7 @@ uint32_t treeBlinkerTime[MAX_TREE_BLINKERS];
 uint8_t treeBlinkerState[MAX_TREE_BLINKERS];
 uint8_t treeBlinkerMax[MAX_TREE_BLINKERS];
 offset treeBlinkers[MAX_TREE_BLINKERS];
+uint32_t treeCounter;
 
 /* Settings in Arduino IDE:
    Generic ESP8266 module
@@ -348,7 +349,7 @@ void handleTest() {
 
   for (int y=0; y<YSIZE; y++) {
     for (int x=0; x<XSIZE; x++) {
-      ledPanel.SetLED(x,y,colors[random(7)]);
+      ledPanel.SetLED(x,y,colors[random(104)%8]);
     }
   }
 }
@@ -381,13 +382,15 @@ bool updateTime()
   uint8_t curHour = timeClient.getHours();
   uint8_t curSecond = timeClient.getSeconds();
 
+
   // Deal with the time first: DST calculation, then set the time!
-  uint32_t prevTime = clockDriver->setTime(curHour, curMinute, curSecond);
+  uint32_t prevTime = clockDriver->setTime(curHour, curMinute, curSecond, 0, 0);
 
   uint32_t epochTime = timeClient.getEpochTime();
   lastNtpDate = epochTime;
   if (autoSetDST != DST_NONE) {
     lastUpdatePhase = 3;
+
     bool potentialDST = (autoSetDST == DST_USA) ?
       usIsTodayDST(day(lastNtpDate), month(lastNtpDate), dayOfWeek(lastNtpDate)) :
       europeIsTodayDST(day(lastNtpDate), month(lastNtpDate), dayOfWeek(lastNtpDate));
@@ -403,8 +406,13 @@ bool updateTime()
 	curMinute = timeClient.getMinutes();
 	curHour = timeClient.getHours();
 	curSecond = timeClient.getSeconds();
-	prevTime = clockDriver->setTime(curHour, curMinute, curSecond);
+
 	epochTime = timeClient.getEpochTime();
+	uint8_t curDay = day(epochTime);
+	uint8_t curMon = month(epochTime);
+
+	prevTime = clockDriver->setTime(curHour, curMinute, curSecond, curMon, curDay);
+    
 	lastNtpDate = epochTime;
       }
     }
@@ -464,6 +472,7 @@ bool updateTime()
 
 void startTreeMode()
 {
+  treeCounter = 10 * 30; // FIXME: 30 second constant
   currentMode = mode_tree;
   ledPanel.setFadeMode(false);
   ledPanel.clear();
@@ -516,7 +525,7 @@ void handleTestClock()
 
   uint16_t mm = v % 100;
   uint16_t hh = v / 100;
-  clockDriver->setTime(hh, mm, 0);
+  clockDriver->setTime(hh, mm, 0, 0, 0);
 
   clockShowing = true;
   clockRestarting = false;
@@ -1140,6 +1149,8 @@ void loop() {
 	  clockRestarting = false;
 	  clockShowing = false;
 	  colorWheelMode = true;
+	} else if (thisDelay == 99999) { // FIXME: terrible constant
+	  startTreeMode();
 	} else {
 	  nextTick = millis() + thisDelay;
 	}
@@ -1300,7 +1311,9 @@ void loop() {
   }
 
   if (currentMode == mode_tree) {
-    handleTreeBlinkers();
+    EVERY_N_MILLISECONDS(100) {
+      handleTreeBlinkers();
+    }
   }
 
   EVERY_N_MILLISECONDS(35) {
@@ -1384,15 +1397,15 @@ void createNewTreeBlinker()
 {
   int newY, newX;
   do {    
-    newY = random(10); // 0-10, inclusive
+    newY = random(110)%11; // 0-10, inclusive
     if (newY < 2) {
-      newX = random(1) + 3;
+      newX = (random(100)%2) + 3;
     } else if (newY < 6) {
-      newX = random(3) + 2;
+      newX = (random(100)%4) + 2;
     } else if (newY < 9) {
-      newX = random(5) + 1;
+      newX = (random(102)%6) + 1;
     } else {
-      newX = random(7);
+      newX = random(104)%8;
     }
     newY += 16; // offset to the top of the tree
   } while ((CRGB) ledPanel.GetLED(newX, newY) != (CRGB) CRGB::Green);
@@ -1401,13 +1414,28 @@ void createNewTreeBlinker()
   treeBlinkers[currentTreeBlinkers].y = newY;
   treeBlinkerTime[currentTreeBlinkers] = millis();
   treeBlinkerState[currentTreeBlinkers] = 0;
-  treeBlinkerMax[currentTreeBlinkers] = 10 + random(4);
+  treeBlinkerMax[currentTreeBlinkers] = 8 + random(4);
   currentTreeBlinkers++;
   ledPanel.SetLED(newX, newY, CRGB::Black);
 }
 
 void handleTreeBlinkers()
 {
+  if (--treeCounter == 0) {
+    // Done blinking - go back to clock mode
+
+    ledPanel.clearByScrolling();
+
+    startClockMode();
+
+    colorWheelMode = false;
+    nextTick = millis() + 45 * 1000;
+    clockShowing = false;
+    clockRestarting = true;
+
+    return;
+  }
+
   if (currentTreeBlinkers < MAX_TREE_BLINKERS) {
     createNewTreeBlinker();
   }
@@ -1417,7 +1445,7 @@ void handleTreeBlinkers()
     int x = treeBlinkers[i].x;
     int y = treeBlinkers[i].y;
     if (millis() >= treeBlinkerTime[i]) {
-      treeBlinkerTime[i] = millis() + 250;
+      treeBlinkerTime[i] = millis() + 250 + random(100);
       treeBlinkerState[i]++;
       if (treeBlinkerState[i] != treeBlinkerMax[i]) {
 	ledPanel.SetLED(x, y, (random(100) >= 50) ? CRGB::Blue : CRGB::White);

@@ -20,7 +20,7 @@ class TetrisClock {
   TetrisClock(LEDAbstraction *p);
   ~TetrisClock();
 
-  uint32_t setTime(uint8_t h, uint8_t m, uint8_t s);
+  uint32_t setTime(uint8_t h, uint8_t m, uint8_t s, uint8_t curMon, uint8_t curDay);
 
   void drawDigitAt(uint8_t d, uint8_t hpos, uint8_t vpos);
   void drawTwoDigitsAt(uint8_t leftnum, uint8_t rightnum,
@@ -43,6 +43,9 @@ class TetrisClock {
   void loop();
 
  private:
+  void queueTreePieces();
+
+
   LEDAbstraction *ledPanel;
 
   // While dropping a piece, here's the state:
@@ -58,6 +61,10 @@ class TetrisClock {
   uint8_t hourCounter;
   uint8_t minuteCounter;
   uint8_t secondCounter;
+  uint8_t currentDay;
+  uint8_t currentMonth;
+
+  bool isInTreeMode;
 
 };
 
