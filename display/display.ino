@@ -96,6 +96,8 @@ bool autoBrightness = true;
 
 int32_t lastCorrection = 0; // When we NTP, save the # of seconds drifted
 
+uint8_t curMon, curDay, curHour, curMinute, curSecond;
+
 enum {
   mode_text     = 0,
   mode_tetris   = 1,
@@ -189,6 +191,10 @@ void handleStatus() {
     String(defaultTimeZone) +
     String("</div><div>Auto-set DST: ") +
     String(autoSetDST) + 
+    String("</div><div>Last polled epoch time: ") + 
+    String(lastNtpDate) +
+    String("</div><div>Last polled date/time: ") + 
+    String(curMon) + String("/") + String(curDay) + String(" ") + String(curHour) + String(":") + String(curMinute) + String(":") + String(curSecond) +
     String("</div><div>STA mode: ") +
     String(staMode ? "true" : "false") + 
     String("</div><div>TCP client: ") +
@@ -378,9 +384,9 @@ bool updateTime()
   }
 
   lastUpdatePhase = 2;
-  uint8_t curMinute = timeClient.getMinutes();
-  uint8_t curHour = timeClient.getHours();
-  uint8_t curSecond = timeClient.getSeconds();
+  curMinute = timeClient.getMinutes();
+  curHour = timeClient.getHours();
+  curSecond = timeClient.getSeconds();
 
 
   // Deal with the time first: DST calculation, then set the time!
@@ -388,12 +394,14 @@ bool updateTime()
 
   uint32_t epochTime = timeClient.getEpochTime();
   lastNtpDate = epochTime;
+  curDay = day(epochTime);
+  curMon = month(epochTime);
   if (autoSetDST != DST_NONE) {
     lastUpdatePhase = 3;
 
     bool potentialDST = (autoSetDST == DST_USA) ?
-      usIsTodayDST(day(lastNtpDate), month(lastNtpDate), dayOfWeek(lastNtpDate)) :
-      europeIsTodayDST(day(lastNtpDate), month(lastNtpDate), dayOfWeek(lastNtpDate));
+      usIsTodayDST(curDay, curMon, dayOfWeek(lastNtpDate)) :
+      europeIsTodayDST(curDay, curMon, dayOfWeek(lastNtpDate));
 
     if (potentialDST != isDST) {
       // DST flag changed. We can offset what timeClient returned, or we can take 
@@ -408,8 +416,6 @@ bool updateTime()
 	curSecond = timeClient.getSeconds();
 
 	epochTime = timeClient.getEpochTime();
-	uint8_t curDay = day(epochTime);
-	uint8_t curMon = month(epochTime);
 
 	prevTime = clockDriver->setTime(curHour, curMinute, curSecond, curMon, curDay);
     
