@@ -824,20 +824,7 @@ void setup()
     staMode = false; // No SSID, so force reconfiguration of STA mode
   }
 
-  // We start up in SoftAP mode, which the controller uses. This gives
-  // us a permanent future-proof version where the controller and
-  // clock will work, regardless of whether or not there's an Internet
-  // connection available.
-
-  WiFi.softAP("TetrisDisplay");
-  // Set the IP address and info for SoftAP mode. Note this is also
-  // the default IP (192.168.4.1), but better to be explicit...
-  IPAddress local_IP(192,168,4,1);
-  IPAddress gateway(192,168,4,1);
-  IPAddress subnet(255,255,255,0);
-  WiFi.softAPConfig(local_IP, gateway, subnet);
-
-  // If we have an SSID/password configured, we'll also try to connect
+  // If we have an SSID/password configured, we'll try to connect
   // to the internet for NTP updates.
 
   if (staMode) {
@@ -847,12 +834,28 @@ void setup()
     while (count < 5 && WiFi.waitForConnectResult() != WL_CONNECTED) {
       count++;
       delay(5000);
-      ESP.restart();
     }
     if (count >= 5) {
       // Failed to connect to WiFi; force re-configuration of STA mode
       staMode = false;
     }
+  }
+
+  // Fall through, if WiFi connection failed.
+  if (!staMode) {
+    // We start up in SoftAP mode, which the controller uses. This gives
+    // us a permanent future-proof version where the controller and
+    // clock will work, regardless of whether or not there's an Internet
+    // connection available.
+    WiFi.mode(WIFI_AP);
+    
+    WiFi.softAP("TetrisDisplay");
+    // Set the IP address and info for SoftAP mode. Note this is also
+    // the default IP (192.168.4.1), but better to be explicit...
+    IPAddress local_IP(192,168,4,1);
+    IPAddress gateway(192,168,4,1);
+    IPAddress subnet(255,255,255,0);
+    WiFi.softAPConfig(local_IP, gateway, subnet);
   }
 
   location = NULL;

@@ -15,8 +15,10 @@ WiFiUDP Udp;
 IPAddress clientIP;
 uint16_t clientPort;
 
-const char* ssid = "your-wifi-ssid";
-const char* password = "your-wifi-password";
+char ssid[50] = "";
+char password[50] = "";
+bool staMode = false;
+bool fsRunning = false; // set to true when SPIFFS is set up
 
 // 4 GPIO inputs debouncing
 Bounce *debouncer[4];
@@ -41,15 +43,127 @@ ESP8266WebServer server(80); //HTTP server on port 80
    Port: <via wifi after first attempt>
 */
 
+void handleSubmit() {
+  String new_ssid = server.arg("ssid");
+  String new_password = server.arg("password");
+  strncpy(ssid, new_ssid.c_str(), 50);
+  strncpy(password, new_password.c_str(), 50);
+  writePrefs();
+
+  // Redirect to /restart to apply changs
+  server.sendHeader("Location", String("/restart"), true);
+  server.send(302, "text/plain", "");
+}
+
+void handleConfig()
+{
+  server.send(200, "text/html",
+              "<!DOCTYPE html><html>"
+              "<head>"
+              "</head>"
+              "<body>"
+              "<form action='/submit' method='post'>"
+              "<div><label for='ssid'>Connect to SSID:</label>"
+              "<input type='text' id='ssid' name='ssid' /></div>"
+              "<div><label for='password'>Network Password:</label>"
+              "<input type='password' id='password' name='password' /></div>"
+              "<div><input type='submit' value='Save' /></div>"
+              "</form>"
+              "</body></html");
+}
+
+void handleRestart() {
+  server.send(200, "text/html", "Okay, restarting");
+  delay(1000);
+  ESP.restart();
+}
+
 void handleRoot() {
   // Debugging: tell me what you see on MDNS
-  String status = String("<html><pre>");
-
-  status += String("\n\nClient IP address is ") + clientIP.toString() + String("\n");
-  status += String("</html>");
+  String status = String("<html><h1>Welcome to the Tetris controller!</h1>"
+			 "<p>Embedded pages:</p>"
+			 "<ul>"
+			 "<li><a href='/config'>/config</a>: change configuration (SSID, password)</li>"
+			 "<li><a href='/restart'>/restart</a>: reboot the controller</li>"
+			 "</ul></p>");
+  status += String("<p>Current configuration:</p><pre>ssid: ") + 
+    String(ssid) + String("\nconnecting to IP: ") + clientIP.toString() + String("\n</pre></html>");
 
   server.send(200, "text/html", status.c_str());
 }
+
+void processConfig(const char *lhs, const char *rhs)
+{
+  if (!strcmp(lhs, "ssid")) {
+    strncpy(ssid, (char *)rhs, 50);
+    staMode = true;
+  } else if (!strcmp(lhs, "password")) {
+    strncpy(password, (char *)rhs, 50);
+  }
+}
+
+void writePrefs()
+{
+  fs::File f = SPIFFS.open("/controller.cfg", "w");
+  f.println("# Submitted config");
+  f.print("ssid=");
+  f.println(ssid);
+  f.print("password=");
+  f.println(password);
+  f.close();
+}
+
+void readPrefs(fs::File f)
+{
+  bool readingVar = true;
+  int8_t slen = 0;
+  char lhs[50] = {'\0'};
+  char *lp = lhs;
+  char rhs[50] = {'\0'};
+  char *rp = rhs;
+  for(uint8_t i=0; i<f.size(); i++) {
+    char c = f.read();
+    // Skip commented out and blank lines
+    if (slen == 0 && (c == '#' || c == '\n' || c == '\r')) {
+      continue;
+    }
+
+    if (slen >= 49) {
+      // safety: reset
+      slen = 0;
+      readingVar = true;
+      lhs[0] = rhs[0] = '\0';
+    }
+    if (readingVar) {
+      // Keep reading a variable name until we hit an '='
+      if (c == '\n' || c == '\r') {
+        // Abort - got a return before the '='
+        slen = 0;
+        lhs[0] = '\0';
+      }
+      else if (c == '=') {
+        readingVar = false;
+        slen = 0;
+        rhs[0] = '\0';
+      } else {
+        lhs[slen++] = c;
+        lhs[slen] = '\0';
+      }
+    } else {
+      // Keep reading a variable value until we hit a newline
+      if (c == '\n' || c == '\r') {
+        processConfig(lhs,rhs);
+        readingVar = true;
+        slen = 0;
+        lhs[0] = rhs[0] = '\0';
+      } else {
+        rhs[slen++] = c;
+        rhs[slen] = '\0';
+      }
+    }
+  }
+}
+
 
 void setup() {
 #ifdef DEBUGSERIAL
@@ -68,15 +182,83 @@ void setup() {
   pinMode(0, INPUT);
   pinMode(2, INPUT);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  // WiFi.setSleepMode(WIFI_NONE_SLEEP); // to avoid sleep timer issues (Debugging only)
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+  if (SPIFFS.begin()) {
+    fsRunning = true;
+  } else {
+    fsRunning = false;
+  }
+
+  if (fsRunning) {
+    // try to load the config file.
+    fs::File f = SPIFFS.open("/controller.cfg", "r");
+    if (!f) {
+      // No config file found; re-format the SPIFFS and create a default config.
+      if (!SPIFFS.format()) {
+	// Not sure what happened, but we can't use the filesystem.
+	fsRunning = false;
+      } else {
+	f = SPIFFS.open("/controller.cfg", "w");
+	f.println("# Blank auto-generated config");
+	f.close();
+	f = SPIFFS.open("/controller.cfg", "r");
+	if (!f) {
+	  fsRunning = false;
+	}
+      }
+    }
+
+    if (f) {
+      readPrefs(f);
+    }
+  }
+
+  if (!ssid[0]) {
+    staMode = false;
+  } else {
+    staMode = true;
+  }
+
+  if (staMode) {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+    // WiFi.setSleepMode(WIFI_NONE_SLEEP); // to avoid sleep timer issues (Debugging only)
+    uint8_t count=0;
+    while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+      count++;
 #ifdef DEBUGSERIAL 
-    Serial.println("Connection Failed! Rebooting...");
+      Serial.println("Connection Failed! Delaying...");
 #endif
-    delay(5000);
-    ESP.restart();
+      delay(5000);
+    }
+    if (count >= 5) {
+      staMode = false;
+    }
+  }
+
+  if (!staMode) {
+    // Try to connect to the "TetrisDisplay" network.
+    WiFi.mode(WIFI_STA);
+    WiFi.begin("TetrisDisplay", "");
+
+    // Explicit IP, b/c no DHCP exists
+    IPAddress local_IP(192,168,4,2);
+    IPAddress gateway(192,168,4,1);
+    IPAddress subnet(255,255,255,0);
+
+    uint8_t count=0;
+    while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+      count++;
+#ifdef DEBUGSERIAL 
+      Serial.println("Connection Failed! Delaying...");
+#endif
+      delay(5000);
+    }
+    if (count >= 5) {
+#ifdef DEBUGSERIAL 
+      Serial.println("Connection Failed! Rebooting...");
+#endif
+      ESP.restart();
+    }
   }
 
 #ifndef DEBUGSERIAL
@@ -126,6 +308,10 @@ void setup() {
   Udp.begin(49152); // arbitrary ephemeral port
 
   server.on("/", handleRoot);
+  server.on("/restart", handleRestart);
+  server.on("/submit", handleSubmit);
+  server.on("/config", handleConfig);
+
   server.begin();
 
   // 4 GPIO pins debounced
