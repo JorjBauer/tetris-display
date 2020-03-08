@@ -399,6 +399,7 @@ bool updateTime()
   if (autoSetDST != DST_NONE) {
     lastUpdatePhase = 3;
 
+    // dayOfWeek() returns 1 == Sunday
     bool potentialDST = (autoSetDST == DST_USA) ?
       usIsTodayDST(curDay, curMon, dayOfWeek(lastNtpDate)) :
       europeIsTodayDST(curDay, curMon, dayOfWeek(lastNtpDate));
@@ -1382,9 +1383,13 @@ bool usIsTodayDST(int8_t day, int8_t month, int8_t dow)
   if (month > 3 && month < 11) { return true; }
   int8_t previousSunday = day - dow;
 
-  // March: DST is true if the previous Sunday is on/after the 7th
-  // (i.e. "starts on the second sunday of March")
-  if (month == 3) { return previousSunday >= 7; }
+  // March: DST is true on and after the second Sunday. Calculate when the first Sunday of this month way
+  if (month == 3) {
+    if (day <= 7) { return false; } // Obviously the first week is a miss
+    int8_t firstSunday = ((day - dow)+1) % 7;
+    int8_t secondSunday = firstSunday + 7;
+    return (day >= secondSunday);
+  }
 
   // November: we're only DST if we're before the first Sunday
   return previousSunday <= 0;
