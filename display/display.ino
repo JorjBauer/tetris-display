@@ -1382,8 +1382,9 @@ bool usIsTodayDST(int8_t day, int8_t month, int8_t dow)
   if (month > 3 && month < 11) { return true; }
   int8_t previousSunday = day - dow;
 
-  // March: DST is true if the previous Sunday is on/after the 8th
-  if (month == 3) { return previousSunday >= 8; }
+  // March: DST is true if the previous Sunday is on/after the 7th
+  // (i.e. "starts on the second sunday of March")
+  if (month == 3) { return previousSunday >= 7; }
 
   // November: we're only DST if we're before the first Sunday
   return previousSunday <= 0;
