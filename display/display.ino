@@ -179,6 +179,18 @@ void handleStatus() {
   uint8_t mm = (ct >> 8) & 0xFF;
   uint8_t ss = (ct & 0xFF);
 
+  char datetimebuf[15];
+  sprintf(datetimebuf,
+	  "%.2d/%.2d %.2d:%.2d:%.2d",
+	  curMon, curDay, curHour, curMinute, curSecond);
+  char timebuf[9];
+  sprintf(timebuf, "%.2d:%.2d:%.2d",
+	  hh, mm, ss);
+  char sunrisebuf[6];
+  sprintf(sunrisebuf, "%.2d:%.2d", sunriseHours, sunriseMinutes);
+  char sunsetbuf[6];
+  sprintf(sunsetbuf, "%.2d:%.2d", sunsetHours, sunsetMinutes);
+
   String status = String("<html><div>SSID: ") +
     String(ssid) + 
     String("</div><div>Password: ") + 
@@ -194,7 +206,7 @@ void handleStatus() {
     String("</div><div>Last polled epoch time: ") + 
     String(lastNtpDate) +
     String("</div><div>Last polled date/time: ") + 
-    String(curMon) + String("/") + String(curDay) + String(" ") + String(curHour) + String(":") + String(curMinute) + String(":") + String(curSecond) +
+    String(datetimebuf) +
     String("</div><div>STA mode: ") +
     String(staMode ? "true" : "false") + 
     String("</div><div>TCP client: ") +
@@ -219,15 +231,15 @@ void handleStatus() {
     String("</div><div>Next NTP update: ") +
     String(buf) + 
     String("</div><div>CurTime: ") +
-    String(hh) + String(":") + String(mm) + String(":") + String(ss) +
+    String(timebuf) +
     String("</div><div>Last correction: ") + 
     String(lastCorrection) +
     String("</div><div>Auto-brightness: ") +
     String(autoBrightness ? "true" : "false") +
     String("</div><div>Sunrise at: ") +
-    String(sunriseHours) + String(":") + String(sunriseMinutes) +
+    String(sunrisebuf) +
     String("</div><div>Sunset at: ") +
-    String(sunsetHours) + String(":") + String(sunsetMinutes) +
+    String(sunsetbuf) +
     String("</div><div>Is today DST: ") + 
     String(isDST ? "yes" : "no") +
     String("</div><div>Last Update Phase: ") + 
@@ -625,29 +637,41 @@ void handleFile() {
 
 void handleConfig()
 {
-  server.send(200, "text/html", 
-	      "<!DOCTYPE html><html>"
-	      "<head>"
-	      "</head>"
-	      "<body>"
-	      "<form action='/submit' method='post'>"
-	      "<div><label for='ssid'>Connect to SSID:</label>"
-	      "<input type='text' id='ssid' name='ssid' /></div>"
-	      "<div><label for='password'>Network Password:</label>"
-	      "<input type='password' id='password' name='password' /></div>"
-	      "<div><label for='lat'>Latitude:</label>"
-	      "<input type='text' id='lat' name='latitude' /></div>"
-	      "<div><label for='lon'>Longitude:</label>"
-	      "<input type='text' id='lon' name='longitude' /></div>"
-	      "<div><label for='tz'>Time zone:</label>"
-	      "<input type='text' id='tz' name='timezone' /></div>"
-	      "<div><p>Auto-set DST:</p>"
-	      "<p><input type='radio' name='autodst' value='US' checked='checked'><label for='US'>Yes, US DST rules</label><br />"
-	      "<input type='radio' name='autodst' value='EU'><label for='EU'>Yes, Europe DST rules</label><br />"
-	      "<input type='radio' name='autodst' value='NO'><label for='NO'>No, disable DST</label></p></div>"
-	      "<div><input type='submit' value='Save' /></div>"
-	      "</form>"
-	      "</body></html");
+  String html =  
+    String("<!DOCTYPE html><html>"
+	   "<head>"
+	   "</head>"
+	   "<body>"
+	   "<form action='/submit' method='post'>"
+	   "<div><label for='ssid'>Connect to SSID:</label>"
+	   "<input type='text' id='ssid' name='ssid' value='") +
+    String(ssid) +
+    String("'/></div>"
+	   "<div><label for='password'>Network Password:</label>"
+	   "<input type='password' id='password' name='password' value='") +
+    String(password) +
+    String("'/></div>"
+	   "<div><label for='lat'>Latitude:</label>"
+	   "<input type='text' id='lat' name='latitude' value='") +
+    String(lat) +
+    String("'/></div>"
+	   "<div><label for='lon'>Longitude:</label>"
+	   "<input type='text' id='lon' name='longitude' value='") +
+    String(lon) +
+    String("'/></div>"
+	   "<div><label for='tz'>Time zone:</label>"
+	   "<input type='text' id='tz' name='timezone' value='") +
+    String(defaultTimeZone) +
+    String("'/></div>"
+	   "<div><p>Auto-set DST:</p>"
+	   "<p><input type='radio' name='autodst' value='US' checked='checked'><label for='US'>Yes, US DST rules</label><br />"
+	   "<input type='radio' name='autodst' value='EU'><label for='EU'>Yes, Europe DST rules</label><br />"
+	   "<input type='radio' name='autodst' value='NO'><label for='NO'>No, disable DST</label></p></div>"
+	   "<div><input type='submit' value='Save' /></div>"
+	   "</form>"
+	   "</body></html>");
+  server.send(200, "text/html",
+	      html.c_str());
 }
 
 void handleSubmit()
