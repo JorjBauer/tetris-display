@@ -61,9 +61,9 @@ uint8_t sunsetHours;
 uint8_t sunsetMinutes;
 
 enum {
-  DST_NONE = 0,
-  DST_USA  = 1,
-  DST_EU   = 2
+  T_DST_NONE = 0,
+  T_DST_USA  = 1,
+  T_DST_EU   = 2
 };
 
 // Preferences, as stored in SPIFFS. Defaults overridden by whatever's
@@ -73,7 +73,7 @@ char password[50] = "";
 float lat = 40;
 float lon = -75;
 int8_t defaultTimeZone = -5;
-int8_t autoSetDST = DST_USA;
+int8_t autoSetDST = T_DST_USA;
 bool staMode = true;
 // End preferences
 
@@ -408,11 +408,11 @@ bool updateTime()
   lastNtpDate = epochTime;
   curDay = day(epochTime);
   curMon = month(epochTime);
-  if (autoSetDST != DST_NONE) {
+  if (autoSetDST != T_DST_NONE) {
     lastUpdatePhase = 3;
 
     // dayOfWeek() returns 1 == Sunday
-    bool potentialDST = (autoSetDST == DST_USA) ?
+    bool potentialDST = (autoSetDST == T_DST_USA) ?
       usIsTodayDST(curDay, curMon, dayOfWeek(lastNtpDate)) :
       europeIsTodayDST(curDay, curMon, dayOfWeek(lastNtpDate));
 
@@ -690,11 +690,11 @@ void handleSubmit()
   defaultTimeZone = new_timezone.toInt();
 
   if (new_autodst.startsWith("E")) {
-    autoSetDST = DST_EU;
+    autoSetDST = T_DST_EU;
   } else if (new_autodst.startsWith("U")) {
-    autoSetDST = DST_USA;
+    autoSetDST = T_DST_USA;
   } else {
-    autoSetDST = DST_NONE;
+    autoSetDST = T_DST_NONE;
   }
 
   if (ssid[0])
@@ -722,9 +722,9 @@ void processConfig(const char *lhs, const char *rhs)
   }
   else if (!strcmp(lhs, "autodst")) {
     autoSetDST = 
-      (rhs[0] == 'u' || rhs[0] == 'U') ? DST_USA :
-      (rhs[0] == 'e' || rhs[0] == 'E') ? DST_EU :
-      DST_NONE;
+      (rhs[0] == 'u' || rhs[0] == 'U') ? T_DST_USA :
+      (rhs[0] == 'e' || rhs[0] == 'E') ? T_DST_EU :
+      T_DST_NONE;
   }
   else if (!strcmp(lhs, "stamode")) {
     staMode = (rhs[0] == 't' || rhs[0] == 'y') ? true : false;
@@ -748,8 +748,8 @@ void writePrefs()
   f.print("timezone=");
   f.println(defaultTimeZone);
   f.print("autodst=");
-  f.println((autoSetDST == DST_NONE) ? "n" :
-	    (autoSetDST == DST_USA) ? "u" :
+  f.println((autoSetDST == T_DST_NONE) ? "n" :
+	    (autoSetDST == T_DST_USA) ? "u" :
 	    "e");
   f.print("stamode=");
   f.println(staMode ? "t" : "f");
@@ -811,6 +811,7 @@ void readPrefs(fs::File f)
     }
   }
 }
+
 
 void setup()
 {
@@ -910,6 +911,9 @@ void setup()
   tmpf.close();
 #endif
 
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+
   // Port defaults to 8266
   // ArduinoOTA.setPort(8266);
 
@@ -921,7 +925,14 @@ void setup()
   // ArduinoOTA.setPassword((const char *)"123");
 
   ArduinoOTA.begin();
-
+  
+  /*...
+homekit_setup();
+homekit_server_config_t config = {
+    .accessories = accessories,
+    .password = "111-11-111"
+};
+  */
   ledPanel.Init();
 
   ledPanel.setFadeMode(true);
@@ -1123,6 +1134,24 @@ void addColumnToBackingStore(uint8_t data)
  }
 
  backingPixels.addLine(storeData);
+}
+
+void wifi_stayConnected()
+{
+  if (!staMode)
+    return;
+
+  static uint32_t nextMillis = 0;
+  if (millis() > nextMillis) {
+    if (WiFi.status() != WL_CONNECTED) {
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);
+    }
+
+    MDNS.announce();
+
+    nextMillis = millis() + 15000;
+  }
 }
 
 void loop() {
