@@ -43,6 +43,7 @@ bool RingPixels::addLine(byte *b)
   }
 
   this->fill++;
+  return true;
 }
 
 byte *RingPixels::consumeLine()
