@@ -2,7 +2,7 @@
 #define __LEDABSTRACTION_H
 
 
-#define FASTLED_ALLOW_INTERRUPTS 0
+#define FASTLED_ALLOW_INTERRUPTS 1
 #define FASTLED_ESP8266_DMA
 #include <FastLED.h>
 

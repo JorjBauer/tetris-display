@@ -7,6 +7,7 @@
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <ESP8266httpUpdate.h>
 
 #include "LEDAbstraction.h"
 #include "RingPixels.h"
@@ -145,6 +146,9 @@ void handleStatus() {
   r = templ.addRepvar(r, String("@COMMENT@"), String(myprefs.comment));
   r = templ.addRepvar(r, String("@ADMINPW@"), String(myprefs.adminPassword));
   r = templ.addRepvar(r, String("@OTAPW@"), String(myprefs.otaPassword));
+  r = templ.addRepvar(r, String("@UPDATESVRIP@"), String(myprefs.updateServerHost));
+  r = templ.addRepvar(r, String("@UPDATESVRPORT@"), String(myprefs.updateServerPort));
+  r = templ.addRepvar(r, String("@UPDATESVRPATH@"), String(myprefs.updateServerPath));
   r = templ.addRepvar(r, String("@HASHMAT@"), String(myprefs.hashMaterial));
   r = templ.addRepvar(r, String("@EPOCH@"), String(server.epochTime));
   r = templ.addRepvar(r, String("@NTPSYNC@"), String(server.lastTimeUpdate));
@@ -554,6 +558,9 @@ void handleConfig()
   r = templ.addRepvar(r, String("@PASS@"), String(myprefs.password));
   r = templ.addRepvar(r, String("@ADMINPW@"), String(myprefs.adminPassword));
   r = templ.addRepvar(r, String("@OTAPW@"), String(myprefs.otaPassword));
+  r = templ.addRepvar(r, String("@UPDATESVRIP@"), String(myprefs.updateServerHost));
+  r = templ.addRepvar(r, String("@UPDATESVRPORT@"), String(myprefs.updateServerPort));
+  r = templ.addRepvar(r, String("@UPDATESVRPATH@"), String(myprefs.updateServerPath));
   r = templ.addRepvar(r, String("@HASHMAT@"), String(myprefs.hashMaterial));
   r = templ.addRepvar(r, String("@COMMENT@"), String(myprefs.comment));
   r = templ.addRepvar(r, String("@LAT@"), String(myprefs.lat));
@@ -590,6 +597,9 @@ void handleSubmit()
   String new_latitude = server.arg("latitude");
   String new_longitude = server.arg("longitude");
   String new_autodst = server.arg("autodst");
+  String new_updateserverhost = server.arg("updateserverhost");
+  String new_updateserverport = server.arg("updateserverport");
+  String new_updateserverpath = server.arg("updateserverpath");
 
   myprefs.set("ssid", new_ssid);
   myprefs.set("password", new_password);
@@ -603,6 +613,10 @@ void handleSubmit()
   myprefs.set("defaultTimeZone", new_timezone);
   myprefs.set("autoSetDST", new_autodst);
 
+  myprefs.set("updateServerHost", new_updateserverhost);
+  myprefs.set("updateServerPort", new_updateserverport);
+  myprefs.set("updateServerPath", new_updateserverpath);
+  
   myprefs.write();
   myprefs.read();
   ArduinoOTA.setPassword(myprefs.otaPassword);
@@ -658,16 +672,17 @@ void setup()
   server.on("/tetris", handleTetris);
   server.on("/test", handleTest);
   server.on("/text", handleText);
-  server.on("/status", handleStatus);
+  server.on("/status2", handleStatus); // override default behavior FIXME wound up using a new URI b/c I can't override default...
   server.on("/startclock", handleStartClock);
   server.on("/testclock", handleTestClock);
   server.on("/brightness", handleBrightness);
   server.on("/autobrightness", handleAutoBrightness);
   server.on("/color", handleColorWheel);
   server.on("/update", handleUpdate);
-  server.on("/config", handleConfig);
-  server.on("/submit", handleSubmit);
+  server.on("/config2", handleConfig); // override default behavior FIXME
+  server.on("/submit2", handleSubmit); // override default behavior FIXME
   server.on("/starttree", handleStartTree);
+  server.on("/checkDownload", handleCheckDownload);
 
   Udp.begin(localPort);
   tcpserver.begin();
@@ -1234,4 +1249,42 @@ void drawTree()
       ledPanel.SetLED(x, y, CRGB::Green);
     }
   }
+}
+
+void checkForUpdate(ESP8266WebServer *server)
+{
+  ESPhttpUpdate.rebootOnUpdate(true);
+  WiFiClient client;
+  // This can take a URL instead of broken out pieces. Use that instead maybe?
+  t_httpUpdate_return ret = ESPhttpUpdate.update(client,
+                                                 myprefs.updateServerHost,
+                                                 myprefs.updateServerPort,
+                                                 myprefs.updateServerPath);
+  
+  switch (ret) {
+  case HTTP_UPDATE_FAILED:
+    server->sendContent("Update failed: error ");
+    server->sendContent(String(ESPhttpUpdate.getLastError()));
+    server->sendContent(": ");
+    server->sendContent(ESPhttpUpdate.getLastErrorString());
+    break;
+  case HTTP_UPDATE_NO_UPDATES:
+    server->sendContent("No update needed.");
+    break;
+  case HTTP_UPDATE_OK:
+    server->sendContent("Update ok.");
+    // FIXME: should we force a reboot here? Or does that already happen?
+    break;
+  }
+}
+
+void handleCheckDownload()
+{
+  if (!server.isAuthenticated()) {
+    return;
+  }
+
+  server.SendHeader();
+  checkForUpdate(&server);
+  server.SendFooter();
 }

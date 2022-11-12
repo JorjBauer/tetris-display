@@ -1,4 +1,4 @@
-<form action='/submit' method='post'>
+<form action='/submit2' method='post'>
   <div><label for='ssid'>Connect to SSID:</label>
     <input type='text' id='ssid' name='ssid' value='@SSID'/></div>
   <div><label for='password'>Network Password:</label>
@@ -7,6 +7,12 @@
     <input type='password' id='adminpw' name='adminpw' value='@ADMINPW@'/></div>
   <div><label for='otapw'>OTA Password:</label>
     <input type='password' id='otapw' name='otapw' value='@OTAPW@'/></div>
+  <div><label for='updateserverhost'>Update server host:</label>
+    <input type='text', id='updateserverhost', name='updateserverhost', value='@UPDATESVRIP@' /></div>
+  <div><label for='updateserverport'>Update server port:</label>
+    <input type='number', id='updateserverport', name='updateserverport', value='@UPDATESVRPORT@' /></div>
+  <div><label for='updateserverpath'>Update server path:</label>
+    <input type='text', id='updateservernumber', name='updateservernumber', value='@UPDATESVRPATH@' /></div>
   <div><label for='hashmat'>Cookie encryption key:</label>
     <input type='password' id='hashmat' name='hashmat' value='@HASHMAT@'/></div>
   <div><label for='comment'>Comment:</label>

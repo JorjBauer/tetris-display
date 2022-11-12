@@ -27,6 +27,9 @@ class ClockPrefs : virtual public Prefs {
   float lon;
   int8_t defaultTimeZone;
   int8_t autoSetDST;
+  char updateServerHost[50];
+  uint16_t updateServerPort;
+  char updateServerPath[50];
 };
 
 #endif
