@@ -1,0 +1,32 @@
+  <div>
+    <h1>Welcome to the Tetris Display!</h1>
+    <p>Embedded pages:</p>
+    <ul>
+      <li>/l, /r, /rl, /rr, /d, /s: pages for tetris (left, right, rotate left/right, drop, step)</li>
+      <li><a href='/init'>/init</a>: pick which game to play</li>
+      <li><a href='/tetris'>/tetris</a>: play tetris using in-browser controls</li>
+      <li><a href='/test'>/test</a>: LED test mode</li>
+      <li><a href='/text?s=hi'>/text</a>: GET with argument 's' to display text</li>
+      <li><a href='/startclock'>/startclock</a>: start running a tetris-style clock</li>
+      <li><a href='/testclock?t=0123'>/testclock</a>: test clock display with argument 't'</li>
+      <li><a href='/starttree'>/starttree</a>: display holiday tree</li>
+      <li><a href='/color'>/color</a>: toggle color wheel mode on/off</li>
+      <li><a href='/brightness?b=40'>/brightness</a>: GET with argument 'b' to set brightness (1-255)</li>
+      <li><a href='/autobrightness'>/autobrightness</a>: toggle auto-brightness on or off</li>
+      <li>
+        <a href="/config">/config</a>: change configuration (SSID, password)</li>
+      <li>
+        <a href="/restart">/restart</a>: reboots the device</li>
+      <li>
+        <a href="/status">/status</a>: show current status</li>
+      <li>
+        <a href="/ls">/ls</a>: see what's on the SPIFFS</li>
+      <li>/download?file=...  download a given file from SPIFFS</li>
+      <li>/upload?file=... upload a given file to SPIFFS (`curl -F "@$PWD/file.html" @IP@/upload`)</li>
+    </ul>
+</p>
+<p>This also listens on port 8267 (udp and tcp). When a TCP session is active, then the game is really in 'play' mode; pieces drop automatically, increasing in speed over time. Commands over UDP do play the game but the player has to make time pass (with 's' for single steps or (space) for a drop) unless you first send a '!'. When the game is running, it keeps going unless the TCP session drops (there is no way to stop after '!').</p>
+<p>Performing a GET at the URLs /l, /r, et al. works like the UDP connection - but the overhead of handling them as HTTP requests means they are very laggy. The in-game browser version must use these via AJAX since a browser can't open arbitrary TCP/UDP connections.</p>
+<p>The actual game is best played with a controller that opens a TCP connection to start the game going, and then sends individual commands via UDP.</p>
+    <p style="clear:right;">&nbsp;</p>
+  </div>

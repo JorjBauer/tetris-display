@@ -1,19 +1,21 @@
-#include <ESP8266WiFi.h>
+#include "ClockPrefs.h"
+#include "TCPLogger.h"
+#include "WebManager.h"
+#include "WifiManager.h"
+#include "templater.h"
+
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+
 #include "LEDAbstraction.h"
 #include "RingPixels.h"
 #include <RingBuffer.h>
-
-#include <ESP8266WebServer.h>
-#include <WiFiServer.h>
 
 #include "tetris.h"
 #include "tetris-clock.h"
 #include "snake.h"
 
-#include <NTPClient.h>
 #include <SunriseCalc.h> // from https://github.com/JorjBauer/SunriseCalc
 #include <TimeLib.h>
 
@@ -23,10 +25,20 @@
 #define CHAR_WIDTH 6
 #define CHAR_HEIGHT 7
 
+extern Templater templ;
+
 LEDAbstraction ledPanel;
 
-ESP8266WebServer server(80); //HTTP server on port 80
-WiFiUDP Udp; // UDP server
+ClockPrefs myprefs;
+TCPLogger tlog;
+WebManager server(80);
+WifiManager wifi;
+WiFiUDP Udp;
+
+#define NAME "tetris"
+
+bool fsRunning;
+
 int localPort = 8267;
 byte packetBuffer[25];
 WiFiServer tcpserver(8267); // tcp server
@@ -49,8 +61,6 @@ bool needsRefresh = true;
 bool checkLines = false;
 bool running = false;
 
-bool fsRunning = false; // set to true when SPIFFS is set up
-
 uint32_t nextTick = 0;
 uint32_t nextTimeUpdate = 0;
 int32_t sunriseAt = -1; // minutes since midnight, or -1 for "none"
@@ -60,33 +70,12 @@ uint8_t sunriseMinutes;
 uint8_t sunsetHours;
 uint8_t sunsetMinutes;
 
-enum {
-  T_DST_NONE = 0,
-  T_DST_USA  = 1,
-  T_DST_EU   = 2
-};
-
-// Preferences, as stored in SPIFFS. Defaults overridden by whatever's
-// read from the config.
-char ssid[50] = "";
-char password[50] = "";
-float lat = 40;
-float lon = -75;
-int8_t defaultTimeZone = -5;
-int8_t autoSetDST = T_DST_USA;
-bool staMode = true;
-// End preferences
-
 SunriseCalc *location = NULL;
 
-time_t lastNtpDate;
 bool isDST = false; // always default to false; will set to true
 		    // during calculations if autoSetDST is set
-uint8_t lastUpdatePhase; // for debugging
 
 TetrisClock *clockDriver = NULL;
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org");
 bool clockShowing = false;
 bool clockRestarting = false;
 
@@ -140,127 +129,82 @@ uint32_t treeCounter;
    Port: <via wifi after first attempt>
 */
 
-void handleRoot() {
- server.send(200, "text/html", 
-"<!DOCTYPE html><html>"
-"<h1>Welcome to the Tetris Display!</h1>"
-"<p>Embedded pages:</p>"
-"<ul>"
-"<li>/l, /r, /rl, /rr, /d, /s: pages for tetris (left, right, rotate left/right, drop, step)</li>"
-"<li><a href='/init'>/init</a>: pick which game to play</li>"
-"<li><a href='/tetris'>/tetris</a>: play tetris using in-browser controls</li>"
-"<li><a href='/status'>/status</a>: show current status</li>"
-"<li><a href='/test'>/test</a>: LED test mode</li>"
-"<li><a href='/text?s=hi'>/text</a>: GET with argument 's' to display text</li>"
-"<li><a href='/reset'>/reset</a>: reboots the display</li>"
-"<li><a href='/startclock'>/startclock</a>: start running a tetris-style clock</li>"
-"<li><a href='/testclock?t=0123'>/testclock</a>: test clock display with argument 't'</li>"
-"<li><a href='/starttree'>/starttree</a>: display holiday tree</li>"
-"<li><a href='/color'>/color</a>: toggle color wheel mode on/off</li>"
-"<li><a href='/brightness?b=40'>/brightness</a>: GET with argument 'b' to set brightness (1-255)</li>"
-"<li><a href='/autobrightness'>/autobrightness</a>: toggle auto-brightness on or off</li>"
-"<li><a href='/file?path=/tetris.cfg'>/file</a>: retrieve file from SPIFFS with name in argument 'path'</li>"
-"<li><a href='/config'>/config</a>: change configuration (SSID, password, time zone)</li>"
-"</ul>"
-"</p>"
-"<p>This also listens on port 8267 (udp and tcp). When a TCP session is active, then the game is really in 'play' mode; pieces drop automatically, increasing in speed over time. Commands over UDP do play the game but the player has to make time pass (with 's' for single steps or (space) for a drop) unless you first send a '!'. When the game is running, it keeps going unless the TCP session drops (there is no way to stop after '!').</p>"
-"<p>Performing a GET at the URLs /l, /r, et al. works like the UDP connection - but the overhead of handling them as HTTP requests means they are very laggy. The in-game browser version must use these via AJAX since a browser can't open arbitrary TCP/UDP connections.</p>"
-"<p>The actual game is best played with a controller that opens a TCP connection to start the game going, and then sends individual commands via UDP.</p>"
-"</html>"
-);
-}
-
 void handleStatus() {
-  char buf[100];
-  sprintf(buf, "%d milliseconds", nextTimeUpdate - millis());
 
-  uint32_t ct = clockDriver->curTime();
-  uint8_t hh = (ct >> 16);
-  uint8_t mm = (ct >> 8) & 0xFF;
-  uint8_t ss = (ct & 0xFF);
+  if (!server.isAuthenticated()) {
+    return;
+  }
 
-  char datetimebuf[15];
-  sprintf(datetimebuf,
-	  "%.2d/%.2d %.2d:%.2d:%.2d",
-	  curMon, curDay, curHour, curMinute, curSecond);
-  char timebuf[9];
-  sprintf(timebuf, "%.2d:%.2d:%.2d",
-	  hh, mm, ss);
+  server.SendHeader();
+  repvars *r = templ.newRepvar(String("@SSID@"), String(myprefs.ssid));
+  r = templ.addRepvar(r, String("@PASS@"), String(myprefs.password));
+  r = templ.addRepvar(r, String("@UPTIME@"), String(millis()));
+  r = templ.addRepvar(r, String("@HEAP@"), String(ESP.getFreeHeap()));
+  r = templ.addRepvar(r, String("@ID@"), String(ESP.getChipId()));
+  r = templ.addRepvar(r, String("@MDNS@"), String(myprefs.mdnsName));
+  r = templ.addRepvar(r, String("@COMMENT@"), String(myprefs.comment));
+  r = templ.addRepvar(r, String("@ADMINPW@"), String(myprefs.adminPassword));
+  r = templ.addRepvar(r, String("@OTAPW@"), String(myprefs.otaPassword));
+  r = templ.addRepvar(r, String("@HASHMAT@"), String(myprefs.hashMaterial));
+  r = templ.addRepvar(r, String("@EPOCH@"), String(server.epochTime));
+  r = templ.addRepvar(r, String("@NTPSYNC@"), String(server.lastTimeUpdate));
+
+  tmElements_t tm;
+  breakTime(server.epochTime, tm);
+  r = templ.addRepvar(r, String("@HH@"), String(tm.Hour));
+  r = templ.addRepvar(r, String("@MM@"), String(tm.Minute));
+  r = templ.addRepvar(r, String("@SS@"), String(tm.Second));
+  r = templ.addRepvar(r, String("@M@"), String(tm.Month));
+  r = templ.addRepvar(r, String("@D@"), String(tm.Day));
+  r = templ.addRepvar(r, String("@Y@"), String(tm.Year+1970));
+
+  r = templ.addRepvar(r, String("@LAT@"), String(myprefs.lat));
+  r = templ.addRepvar(r, String("@LON@"), String(myprefs.lon));
+  r = templ.addRepvar(r, String("@TZ@"), String(myprefs.defaultTimeZone));
+  r = templ.addRepvar(r, String("@DST@"), String(myprefs.autoSetDST));
+  r = templ.addRepvar(r, String("@TCPCLIENT@"), String((tcpclient && tcpclient.connected()) ? "Connected" : "Not connected"));
+  r = templ.addRepvar(r, String("@MODE@"),
+                      String( (currentMode == mode_text) ? "mode_text" : 
+                              (currentMode == mode_tetris) ? "mode_tetris" :
+                              (currentMode == mode_clock) ? "mode_clock" :
+                              (currentMode == mode_startup) ? "mode_startup" : 
+                              (currentMode == mode_pickGame) ? "mode_pickGame":
+                              (currentMode == mode_snake) ? "mode_snake" :
+                              (currentMode == mode_tree) ? "mode_tree" :
+                              "unknown mode"));
+  r = templ.addRepvar(r, String("@SCORE@"),
+                      String( (currentMode == mode_tetris) ? tetrisEngine.score() :
+                              (currentMode == mode_snake) ? snakeEngine.score() :
+                              0));
+  r = templ.addRepvar(r, String("@CLOCKSHOWING@"),
+                      String( clockShowing ? "true" : "false" ));
+  r = templ.addRepvar(r, String("@LASTCORR@"), String(lastCorrection));
+
   char sunrisebuf[6];
   sprintf(sunrisebuf, "%.2d:%.2d", sunriseHours, sunriseMinutes);
   char sunsetbuf[6];
   sprintf(sunsetbuf, "%.2d:%.2d", sunsetHours, sunsetMinutes);
 
-  String status = String("<html><div>SSID: ") +
-    String(ssid) + 
-    String("</div><div>Password: ") + 
-    String(password) + 
-    String("</div><div>Lat/lon: ") +
-    String(lat) +
-    String(",") +
-    String(lon) +
-    String("</div><div>Time zone: ")+
-    String(defaultTimeZone) +
-    String("</div><div>Auto-set DST: ") +
-    String(autoSetDST) + 
-    String("</div><div>Last polled epoch time: ") + 
-    String(lastNtpDate) +
-    String("</div><div>Last polled date/time: ") + 
-    String(datetimebuf) +
-    String("</div><div>STA mode: ") +
-    String(staMode ? "true" : "false") + 
-    String("</div><div>TCP client: ") +
-    String( (tcpclient && tcpclient.connected()) ? 
-	    "Connected" : 
-	    "Not connected" ) +
-    String("</div><div>Mode: ") + 
-    String( (currentMode == mode_text) ? "mode_text" : 
-	    (currentMode == mode_tetris) ? "mode_tetris" :
-	    (currentMode == mode_clock) ? "mode_clock" :
-	    (currentMode == mode_startup) ? "mode_startup" : 
-	    (currentMode == mode_pickGame) ? "mode_pickGame" :
-	    (currentMode == mode_snake) ? "mode_snake" :
-	    (currentMode == mode_tree) ? "mode_tree" :
-	    "unknown mode") +
-    String("</div><div>Score: ") + 
-    String(currentMode == mode_tetris ? tetrisEngine.score() : snakeEngine.score()) +  // FIXME: might not be either mode
-    String("</div><div>Clock showing: ") + 
-    String(clockShowing ? "true" : "false") + 
-    String("</div><div>Clock restarting: ") +
-    String(clockRestarting ? "true" : "false") +
-    String("</div><div>Next NTP update: ") +
-    String(buf) + 
-    String("</div><div>CurTime: ") +
-    String(timebuf) +
-    String("</div><div>Last correction: ") + 
-    String(lastCorrection) +
-    String("</div><div>Auto-brightness: ") +
-    String(autoBrightness ? "true" : "false") +
-    String("</div><div>Sunrise at: ") +
-    String(sunrisebuf) +
-    String("</div><div>Sunset at: ") +
-    String(sunsetbuf) +
-    String("</div><div>Is today DST: ") + 
-    String(isDST ? "yes" : "no") +
-    String("</div><div>Last Update Phase: ") + 
-    String(lastUpdatePhase) +
-    String("</div></html>");
-    
-  server.send(200, "text/html", status.c_str());
+  r = templ.addRepvar(r, String("@SUNRISE@"), sunrisebuf);
+  r = templ.addRepvar(r, String("@SUNSET@"), sunsetbuf);
+  r = templ.addRepvar(r, String("@AUTOBRIGHTNESS@"),
+                      String(autoBrightness ? "true" : "false"));
+  r = templ.addRepvar(r, String("@ISDST@"),
+                      String(isDST ? "yes" : "no"));
+  
+  fs::File f = SPIFFS.open("/status.html", "r");
+  templ.generateOutput(&server, f, r);
+  f.close();
+
+  server.SendFooter();
 }
 
-
 void handleTetris() {
- server.send(200, "text/html", 
-"<!DOCTYPE html><html>"
-"<head>"
-"<script src='http://ajax.googleapis.com/ajax/libs/jquery/1.3.1/jquery.min.js' type='text/javascript'></script>"
-"<script type='text/javascript'>"
-"function keyDownHandler(event) { var keyPressed =String.fromCharCode(event.keyCode);if (keyPressed=='A') {$.ajax({ url: '/l', async: false });}if (keyPressed=='D') {$.ajax({ url: '/r', async: false });}if (keyPressed=='Q') {$.ajax({ url: '/rl', async: false });}if (keyPressed=='E') {$.ajax({ url: '/rr', async: false });}if (keyPressed=='S') {$.ajax({ url: '/s', async: false });}if (keyPressed==' ') {$.ajax({ url: '/d', async: false });}}"
-"document.addEventListener('keydown',keyDownHandler, false);"
-"document.addEventListener('keyup',keyUpHandler, false);"
-"</script></head><body><center><h1>Tetris</h1></center><p>Keys: <ul><li>Left and right: <b>a</b> and <b>d</b></li><li>Rotate: <b>q</b> and <b>e</b></li><li>Step: <b>s</b></li><li>Drop: <b>space</b></li></ul></p></body></html>"
-);
+  fs::File f = SPIFFS.open("/tetris.html", "r");
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.send(200, "text/html", "");
+  server.sendContent(f);
+  f.close();
 }
 
 void handleLeft() {
@@ -383,56 +327,38 @@ void addTextToBackingStore(String s)
 
 bool updateTime()
 {
-  lastUpdatePhase = 0;
   ledPanel.clear();
 
-  // necessary to set this before running timeClient.update()
-  timeClient.setTimeOffset(defaultTimeZone * 3600 + (isDST ? 3600 : 0));
+  // Pull the time out of WebManager's NTP clock
+  tmElements_t tm;
+  breakTime(server.epochTime + myprefs.defaultTimeZone * 3600 + (isDST ? 3600 : 0), tm);
 
-  if (!timeClient.update()) {
-    // The NTP update failed; we'll try again next cycle
-    lastUpdatePhase = 1;
-    return false;
-  }
-
-  lastUpdatePhase = 2;
-  curMinute = timeClient.getMinutes();
-  curHour = timeClient.getHours();
-  curSecond = timeClient.getSeconds();
-
+  curMinute = tm.Minute;
+  curHour = tm.Hour;
+  curSecond = tm.Second;
 
   // Deal with the time first: DST calculation, then set the time!
   uint32_t prevTime = clockDriver->setTime(curHour, curMinute, curSecond, 0, 0);
 
-  uint32_t epochTime = timeClient.getEpochTime();
-  lastNtpDate = epochTime;
-  curDay = day(epochTime);
-  curMon = month(epochTime);
-  if (autoSetDST != T_DST_NONE) {
-    lastUpdatePhase = 3;
+  curDay = tm.Day;
+  curMon = tm.Month;
+  if (myprefs.autoSetDST != T_DST_NONE) {
 
     // dayOfWeek() returns 1 == Sunday
-    bool potentialDST = (autoSetDST == T_DST_USA) ?
-      usIsTodayDST(curDay, curMon, dayOfWeek(lastNtpDate)) :
-      europeIsTodayDST(curDay, curMon, dayOfWeek(lastNtpDate));
+    bool potentialDST = (myprefs.autoSetDST == T_DST_USA) ?
+      usIsTodayDST(curDay, curMon, dayOfWeek(server.epochTime)) :
+      europeIsTodayDST(curDay, curMon, dayOfWeek(server.epochTime));
 
     if (potentialDST != isDST) {
-      // DST flag changed. We can offset what timeClient returned, or we can take 
-      // the lazy way out and just re-poll after changing the zone info...
       if (curHour >= 2) {
 	isDST = !isDST;
-	timeClient.setTimeOffset(defaultTimeZone * 3600 + (isDST ? 3600 : 0));
-	
-	timeClient.update(); // ... Lazy!
-	curMinute = timeClient.getMinutes();
-	curHour = timeClient.getHours();
-	curSecond = timeClient.getSeconds();
-
-	epochTime = timeClient.getEpochTime();
-
+        breakTime(server.epochTime + myprefs.defaultTimeZone * 3600 + (isDST ? 3600 : 0), tm);
+        
+        curMinute = tm.Minute;
+        curHour = tm.Hour;
+        curSecond = tm.Second;
 	prevTime = clockDriver->setTime(curHour, curMinute, curSecond, curMon, curDay);
     
-	lastNtpDate = epochTime;
       }
     }
   }
@@ -450,11 +376,10 @@ bool updateTime()
   // Handle auto-brightness
   if (autoBrightness) {
     // recalculate today's sunrise/sunset times
-    lastUpdatePhase = 4;
     if (!location) {
-      location = new SunriseCalc(lat, lon, defaultTimeZone);
+      location = new SunriseCalc(myprefs.lat, myprefs.lon, myprefs.defaultTimeZone);
     }
-    location->date(year(lastNtpDate), month(lastNtpDate), day(lastNtpDate), isDST);
+    location->date(1970+tm.Year, tm.Month, tm.Day, isDST);
 
     sunriseAt = location->sunrise();
     sunsetAt = location->sunset();    
@@ -588,12 +513,6 @@ void handleBrightness() {
   autoBrightness = false;
 }
 
-void handleReset() {
-  server.send(200, "text/html", "Okay, restarting");
-
-  ESP.restart();
-}
-
 void handleAutoBrightness() {
   autoBrightness = !autoBrightness;
   char buf[50];
@@ -623,195 +542,75 @@ String getContentType(String filename)
   return "text/plain";
 }
 
-void handleFile() {
-  String path = server.arg("path");
-  String contentType = getContentType(path);
-  if (SPIFFS.exists(path)) {
-    fs::File file = SPIFFS.open(path, "r");
-    size_t sent = server.streamFile(file, contentType);
-    file.close();
-  } else {
-    server.send(404, "text/html", "File not found");
-  }
-}
-
 void handleConfig()
 {
-  String html =  
-    String("<!DOCTYPE html><html>"
-	   "<head>"
-	   "</head>"
-	   "<body>"
-	   "<form action='/submit' method='post'>"
-	   "<div><label for='ssid'>Connect to SSID:</label>"
-	   "<input type='text' id='ssid' name='ssid' value='") +
-    String(ssid) +
-    String("'/></div>"
-	   "<div><label for='password'>Network Password:</label>"
-	   "<input type='password' id='password' name='password' value='") +
-    String(password) +
-    String("'/></div>"
-	   "<div><label for='lat'>Latitude:</label>"
-	   "<input type='text' id='lat' name='latitude' value='") +
-    String(lat) +
-    String("'/></div>"
-	   "<div><label for='lon'>Longitude:</label>"
-	   "<input type='text' id='lon' name='longitude' value='") +
-    String(lon) +
-    String("'/></div>"
-	   "<div><label for='tz'>Time zone:</label>"
-	   "<input type='text' id='tz' name='timezone' value='") +
-    String(defaultTimeZone) +
-    String("'/></div>"
-	   "<div><p>Auto-set DST:</p>"
-	   "<p><input type='radio' name='autodst' value='US' checked='checked'><label for='US'>Yes, US DST rules</label><br />"
-	   "<input type='radio' name='autodst' value='EU'><label for='EU'>Yes, Europe DST rules</label><br />"
-	   "<input type='radio' name='autodst' value='NO'><label for='NO'>No, disable DST</label></p></div>"
-	   "<div><input type='submit' value='Save' /></div>"
-	   "</form>"
-	   "</body></html>");
-  server.send(200, "text/html",
-	      html.c_str());
+  if (!server.isAuthenticated()) {
+    return;
+  }
+
+  server.SendHeader();
+
+  repvars *r = templ.newRepvar(String("@SSID@"), String(myprefs.ssid));
+  r = templ.addRepvar(r, String("@PASS@"), String(myprefs.password));
+  r = templ.addRepvar(r, String("@ADMINPW@"), String(myprefs.adminPassword));
+  r = templ.addRepvar(r, String("@OTAPW@"), String(myprefs.otaPassword));
+  r = templ.addRepvar(r, String("@HASHMAT@"), String(myprefs.hashMaterial));
+  r = templ.addRepvar(r, String("@COMMENT@"), String(myprefs.comment));
+  r = templ.addRepvar(r, String("@LAT@"), String(myprefs.lat));
+  r = templ.addRepvar(r, String("@LON@"), String(myprefs.lon));
+  r = templ.addRepvar(r, String("@TZ@"), String(myprefs.defaultTimeZone));
+  r = templ.addRepvar(r, String("@USDST@"),
+                      String(myprefs.autoSetDST == T_DST_USA ? "checked" : ""));
+  r = templ.addRepvar(r, String("@EUDST@"),
+                      String(myprefs.autoSetDST == T_DST_EU ? "checked" : ""));
+  r = templ.addRepvar(r, String("@NODST@"),
+                      String(myprefs.autoSetDST == T_DST_NONE ? "checked" : ""));
+
+  fs::File f = SPIFFS.open("/config.html", "r");
+  templ.generateOutput(&server, f, r);
+  f.close();
+
+  server.SendFooter();
 }
 
 void handleSubmit()
 {
+  if (!server.isAuthenticated()) {
+    return;
+  }
+  
   String new_ssid = server.arg("ssid");
   String new_password = server.arg("password");
+  String new_comment = server.arg("comment");
+  String new_adminpw = server.arg("adminpw");
+  String new_otapw = server.arg("otapw");
+  String new_hashmat = server.arg("hashmat");
+  
   String new_timezone = server.arg("timezone");
   String new_latitude = server.arg("latitude");
   String new_longitude = server.arg("longitude");
   String new_autodst = server.arg("autodst");
 
-  strncpy(ssid, new_ssid.c_str(), 50);
-  strncpy(password, new_password.c_str(), 50);
-  lat = new_latitude.toFloat();
-  lon = new_longitude.toFloat();
-  defaultTimeZone = new_timezone.toInt();
+  myprefs.set("ssid", new_ssid);
+  myprefs.set("password", new_password);
+  myprefs.set("comment", new_comment);
+  myprefs.set("adminPassword", new_adminpw);
+  myprefs.set("otaPassword", new_otapw);
+  myprefs.set("hashMaterial", new_hashmat);
 
-  if (new_autodst.startsWith("E")) {
-    autoSetDST = T_DST_EU;
-  } else if (new_autodst.startsWith("U")) {
-    autoSetDST = T_DST_USA;
-  } else {
-    autoSetDST = T_DST_NONE;
-  }
+  myprefs.set("lat", new_latitude);
+  myprefs.set("lon", new_longitude);
+  myprefs.set("defaultTimeZone", new_timezone);
+  myprefs.set("autoSetDST", new_autodst);
 
-  if (ssid[0])
-    staMode = true;
-  else
-    staMode = false;
-
-  writePrefs();
+  myprefs.write();
+  myprefs.read();
+  ArduinoOTA.setPassword(myprefs.otaPassword);
 
   // Redirect to /status to show the changes
   server.sendHeader("Location", String("/status"), true);
   server.send(302, "text/plain", "");
 }
-
-void processConfig(const char *lhs, const char *rhs)
-{
-  if (!strcmp(lhs, "ssid")) {
-    strncpy(ssid, (char *)rhs, 50);
-  }
-  else if (!strcmp(lhs, "password")) {
-    strncpy(password, (char *)rhs, 50);
-  }
-  else if (!strcmp(lhs, "timezone")) {
-    defaultTimeZone = ((String)rhs).toInt();
-  }
-  else if (!strcmp(lhs, "autodst")) {
-    autoSetDST = 
-      (rhs[0] == 'u' || rhs[0] == 'U') ? T_DST_USA :
-      (rhs[0] == 'e' || rhs[0] == 'E') ? T_DST_EU :
-      T_DST_NONE;
-  }
-  else if (!strcmp(lhs, "stamode")) {
-    staMode = (rhs[0] == 't' || rhs[0] == 'y') ? true : false;
-  }
-  else if (!strcmp(lhs, "lat")) {
-    lat = ((String)rhs).toFloat();
-  }
-  else if (!strcmp(lhs, "lon")) {
-    lon = ((String)rhs).toFloat();
-  }
-}
-
-void writePrefs()
-{
-  fs::File f = SPIFFS.open("/tetris.cfg", "w");
-  f.println("# Submitted config");
-  f.print("ssid=");
-  f.println(ssid);
-  f.print("password=");
-  f.println(password);
-  f.print("timezone=");
-  f.println(defaultTimeZone);
-  f.print("autodst=");
-  f.println((autoSetDST == T_DST_NONE) ? "n" :
-	    (autoSetDST == T_DST_USA) ? "u" :
-	    "e");
-  f.print("stamode=");
-  f.println(staMode ? "t" : "f");
-  f.print("lat=");
-  f.println(lat);
-  f.print("lon=");
-  f.println(lon);
-  f.close();
-}
-
-void readPrefs(fs::File f)
-{
-  bool readingVar = true;
-  int8_t slen = 0;
-  char lhs[50] = {'\0'};
-  char *lp = lhs;
-  char rhs[50] = {'\0'};
-  char *rp = rhs;
-  for(uint8_t i=0; i<f.size(); i++) {
-    char c = f.read();
-    // Skip commented out and blank lines
-    if (slen == 0 && (c == '#' || c == '\n' || c == '\r')) {
-      continue;
-    }
-
-    if (slen >= 49) {
-      // safety: reset
-      slen = 0;
-      readingVar = true;
-      lhs[0] = rhs[0] = '\0';
-    }
-
-    if (readingVar) {
-      // Keep reading a variable name until we hit an '='
-      if (c == '\n' || c == '\r') {
-	// Abort - got a return before the '='
-	slen = 0;
-	lhs[0] = '\0';
-      }
-      else if (c == '=') {
-	readingVar = false;
-	slen = 0;
-	rhs[0] = '\0';
-      } else {
-	lhs[slen++] = c;
-	lhs[slen] = '\0';
-      }
-    } else {
-      // Keep reading a variable value until we hit a newline
-      if (c == '\n' || c == '\r') {
-	processConfig(lhs,rhs);
-	readingVar = true;
-	slen = 0;
-	lhs[0] = rhs[0] = '\0';
-      } else {
-	rhs[slen++] = c;
-	rhs[slen] = '\0';
-      }
-    }
-  }
-}
-
 
 void setup()
 {
@@ -822,117 +621,22 @@ void setup()
   else
     fsRunning = false;
 
+  myprefs.begin(NAME);
+  myprefs.setDefaults();
+
+  bool prefsOk = false;
+  
   if (fsRunning) {
-    // Try to load the config file.
-    fs::File f = SPIFFS.open("/tetris.cfg", "r");
-    if (!f) {
-      // No config found; re-format SPIFFS and create it.
-      if (!SPIFFS.format()) {
-	// Not sure what happened, but we can't use the filesystem.
-	fsRunning = false;
-      } else {
-	f = SPIFFS.open("/tetris.cfg", "w");
-	f.println("# Blank auto-generated config");
-	f.close();
-	f = SPIFFS.open("/tetris.cfg", "r");
-	if (!f) {
-	  fsRunning = false;
-	}
-      }
-    }
-
-    if (f) { // re-testing for 'f' because we might have fallen through the format above
-      readPrefs(f);
-    }
+    prefsOk = myprefs.read();
   }
 
-  if (!ssid[0]) {
-    staMode = false; // No SSID, so force reconfiguration of STA mode
-  }
+  wifi.begin(NAME);
 
-  // If we have an SSID/password configured, we'll try to connect
-  // to the internet for NTP updates.
-
-  if (staMode) {
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-    uint8_t count=0;
-    while (count < 5 && WiFi.waitForConnectResult() != WL_CONNECTED) {
-      count++;
-      delay(5000);
-    }
-    if (count >= 5) {
-      // Failed to connect to WiFi; force re-configuration of STA mode
-      staMode = false;
-    }
-  }
-
-  // Fall through, if WiFi connection failed.
-  if (!staMode) {
-    // We start up in SoftAP mode, which the controller uses. This gives
-    // us a permanent future-proof version where the controller and
-    // clock will work, regardless of whether or not there's an Internet
-    // connection available.
-    WiFi.mode(WIFI_AP);
-    
-    WiFi.softAP("TetrisDisplay");
-    // Set the IP address and info for SoftAP mode. Note this is also
-    // the default IP (192.168.4.1), but better to be explicit...
-    IPAddress local_IP(192,168,4,1);
-    IPAddress gateway(192,168,4,1);
-    IPAddress subnet(255,255,255,0);
-    WiFi.softAPConfig(local_IP, gateway, subnet);
-  }
+  server.begin();
+  tlog.begin();
 
   location = NULL;
   
-#if 0
-  // Debugging: dump all the SSIDs we see to the SPIFFS file /ssids.txt
-  fs::File tmpf = SPIFFS.open("/ssids.txt", "w");
-  int n = WiFi.scanNetworks();
-  
-  if (n == 0)
-    tmpf.println("No networks found");
-  else {
-    tmpf.print(n);
-    tmpf.println(" networks found");
-    for (int i = 0; i < n; ++i)	{
-      // Print SSID and RSSI for each network found
-      tmpf.print(i + 1);  //Sr. No
-      tmpf.print(": ");
-      tmpf.print(WiFi.SSID(i)); //SSID
-      tmpf.print(" (");
-      tmpf.print(WiFi.RSSI(i)); //Signal Strength
-      tmpf.print(") MAC:");
-      tmpf.print(WiFi.BSSIDstr(i));
-      tmpf.println((WiFi.encryptionType(i) == ENC_TYPE_NONE)?" Unsecured":" Secured");
-    }
-  }
-  tmpf.close();
-#endif
-
-  WiFi.setAutoReconnect(true);
-  WiFi.persistent(true);
-
-  // Port defaults to 8266
-  // ArduinoOTA.setPort(8266);
-
-  // Hostname defaults to esp8266-[ChipID]
-  String name = String("tetris-display-") + ESP.getChipId();
-  ArduinoOTA.setHostname(name.c_str());
-
-  // No authentication by default
-  // ArduinoOTA.setPassword((const char *)"123");
-
-  ArduinoOTA.begin();
-  
-  /*...
-homekit_setup();
-homekit_server_config_t config = {
-    .accessories = accessories,
-    .password = "111-11-111"
-};
-  */
   ledPanel.Init();
 
   ledPanel.setFadeMode(true);
@@ -941,17 +645,9 @@ homekit_server_config_t config = {
   addTextToBackingStore(WiFi.localIP().toString());
   addTextToBackingStore("      ");
 
-#if 0
-  uint32_t free = system_get_free_heap_size();
-  char buf[25];
-  sprintf(buf, " - RAM: %ld", free);
-  addTextToBackingStore(buf);
-#endif
-
   tetrisEngine.Init();
   snakeEngine.Init();
 
-  server.on("/", handleRoot);
   server.on("/l", handleLeft);
   server.on("/r", handleRight);
   server.on("/rl", handleRotateLeft);
@@ -967,25 +663,19 @@ homekit_server_config_t config = {
   server.on("/testclock", handleTestClock);
   server.on("/brightness", handleBrightness);
   server.on("/autobrightness", handleAutoBrightness);
-  server.on("/reset", handleReset);
   server.on("/color", handleColorWheel);
   server.on("/update", handleUpdate);
-  server.on("/file", handleFile);
   server.on("/config", handleConfig);
   server.on("/submit", handleSubmit);
   server.on("/starttree", handleStartTree);
 
-  server.begin();
-
   Udp.begin(localPort);
   tcpserver.begin();
 
-  MDNS.begin(name.c_str());
+  MDNS.begin(myprefs.mdnsName);
   MDNS.addService("http", "tcp", 80);
   MDNS.addService("tetris", "udp", localPort);
   MDNS.addService("tetris", "tcp", localPort);
-
-  timeClient.begin();
 
   clockDriver = new TetrisClock(&ledPanel);
 }
@@ -1079,15 +769,7 @@ void textLoop()
 	ledPanel.SetLED(i, 31, p[i] ? CRGB::White : CRGB::Black);
       }
     } else if (!backingText.hasData() && currentMode == mode_startup) {
-      if (staMode) {
-	startClockMode();
-      } else {
-	// We're not on the Internet, so don't go right in to clock mode
-	currentMode = mode_text;
-
-	ledPanel.setFadeMode(true);
-	addTextToBackingStore("Configure at http://192.168.4.1/config");
-      }
+      startClockMode();
     }
 
     // If there's text to be placed in the backing pixels buffer and
@@ -1136,29 +818,12 @@ void addColumnToBackingStore(uint8_t data)
  backingPixels.addLine(storeData);
 }
 
-void wifi_stayConnected()
-{
-  if (!staMode)
-    return;
-
-  static uint32_t nextMillis = 0;
-  if (millis() > nextMillis) {
-    if (WiFi.status() != WL_CONNECTED) {
-      WiFi.disconnect();
-      WiFi.begin(ssid, password);
-    }
-
-    MDNS.announce();
-
-    nextMillis = millis() + 15000;
-  }
-}
-
 void loop() {
-  ArduinoOTA.handle();
   MDNS.update();
 
-  server.handleClient();
+  server.loop();
+  wifi.loop();
+  tlog.loop();
 
   int noBytes = Udp.parsePacket();
   if (noBytes) {

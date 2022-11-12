@@ -1,0 +1,32 @@
+<form action='/submit' method='post'>
+  <div><label for='ssid'>Connect to SSID:</label>
+    <input type='text' id='ssid' name='ssid' value='@SSID'/></div>
+  <div><label for='password'>Network Password:</label>
+    <input type='password' id='password' name='password' value='@PASS@'/></div>
+  <div><label for='adminpw'>Admin Password:</label>
+    <input type='password' id='adminpw' name='adminpw' value='@ADMINPW@'/></div>
+  <div><label for='otapw'>OTA Password:</label>
+    <input type='password' id='otapw' name='otapw' value='@OTAPW@'/></div>
+  <div><label for='hashmat'>Cookie encryption key:</label>
+    <input type='password' id='hashmat' name='hashmat' value='@HASHMAT@'/></div>
+  <div><label for='comment'>Comment:</label>
+    <input type='text' id='comment' name='comment' value='@COMMENT@'/></div>
+  <div><label for='lat'>Latitude:</label>
+    <input type='text' id='lat' name='latitude' value='@LAT@'/></div>
+  <div><label for='lon'>Longitude:</label>
+    <input type='text' id='lon' name='longitude' value='@LON@'/></div>
+  <div><label for='tz'>Time zone:</label>
+    <input type='text' id='tz' name='timezone' value='@TZ@'/></div>
+  <div><p>Auto-set DST:</p>
+    <p><input type='radio' name='autodst' value='US' checked='@USDST@'>
+      <label for='US'>Yes, US DST rules</label>
+      <br />
+      <input type='radio' name='autodst' value='EU' checked='@EUDST@'>
+      <label for='EU'>Yes, Europe DST rules</label>
+      <br />
+      <input type='radio' name='autodst' value='NO' checked='@NODST@'>
+      <label for='NO'>No, disable DST</label>
+    </p>
+  </div>
+  <div><input type='submit' value='Save' /></div>
+</form>

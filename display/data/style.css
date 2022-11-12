@@ -1,0 +1,400 @@
+* { padding: 0px;
+    margin: 0px;
+  }
+
+body {
+	font-family:Trebuchet ms, Tahoma, Verdana, Georgia, Arial, sans-serif;
+	font-size:12px;
+	color:#909090;
+	padding-left: 1%;
+	padding-right: 1%;
+	background-color: #EEE;
+      }
+
+div.blogentry {
+	font-family:Trebuchet ms, Tahoma, Verdana, Georgia, Arial, sans-serif;
+	font-size:10px;
+	color:#909090;
+	padding-left: 1%;
+	padding-right: 1%;
+	background-color: #EEE;
+	border-top: 1px dashed black;
+	margin-top: 10px;
+}
+
+div.huntinfo {
+	margin-left: 50px;
+	padding:5px;
+}
+
+H1, H2, H3, H4	{ color: #007;
+                  margin-top: 1em;
+                }
+
+H1 { margin-top: 0;
+   }
+
+P { margin-top: 1em;
+}
+
+UL,OL { margin-left: 1.5em;
+        margin-top: 1em;
+}
+
+A:visited { color: #707070; }
+A:link { color: #00C0C0; }
+
+IMG { border: 0px solid; }
+
+IMG.photo {
+	border: 5px solid;
+        margin: 0px 5px 5px 5px;
+	color: white;
+	float: right;
+
+	border-style: solid;
+	border-color: white;
+	border-thickness: 5 px;
+	}
+
+IMG.thumb {
+	border: 2px solid;
+        margin: 0px 5px 5px 5px;
+	color: white;
+
+	border-style: solid;
+	border-color: white;
+	border-thickness: 5 px;
+	}
+
+STRONG.caption {
+	font-family:Trebuchet ms, Tahoma, Verdana, Georgia, Arial, sans-serif;
+	font-size:8px;
+}
+
+PRE {
+	clear: both;
+	font-family: monospace;
+	font-size: 12px;
+	font-weight: bold;
+	margin: 12px;
+    }
+
+TABLE {
+	border:1px solid black;
+}
+TABLE.admintable {
+	border: 1px solid black;
+}
+
+TR {
+	clear: both;
+   }
+
+TH {
+	clear: both;
+	background-color: #999;
+	color: #EEE;
+   }
+
+TD {
+	padding: .25em;
+	clear: both;
+	font-family:Trebuchet ms, Tahoma, Verdana, Georgia, Arial, sans-serif;
+	font-size:12px;
+   }
+
+TD.d1 {
+	clear: both;
+	font-family:Trebuchet ms, Tahoma, Verdana, Georgia, Arial, sans-serif;
+	font-size:12px;
+	background-color: #0F0;
+	color: #FFF;
+   }
+TD.admintable {
+	border: 1px solid black;
+	color: black;
+   }
+
+
+.MENU {
+	float: center;
+	background-color: #303030;
+	margin: 0px 2px 2px 2px;
+	line-height: 150%;
+	}
+
+.RIGHT {
+	float: right;
+	margin: 0px 0px 0px 0px;
+	font-size: 12 px;
+	}
+
+.LEFT {
+	margin: 0px 0px 0px 0px;
+	font-size: 12 px;
+	}
+
+.CENTER {
+	float: center;
+	font-size: 14 px;
+	text-decoration: underline;
+	text-transform: uppercase;
+	}
+
+.BUTTON {
+	font-weight: normal;
+	font-size: 12px;
+	margin:1px;
+	text-align:justify;
+	line-height: 150%;
+	}
+
+#overviewbox {
+	max-width:700px;
+	padding:0px 27px 0px 27px;
+	margin:27px auto 25px auto;
+	text-align:center;
+}
+
+SELECT {
+	font-family:Trebuchet ms, Tahoma, Verdana, Georgia, Arial, sans-serif;
+	font-size:12px;
+
+	color: black;
+	background-color:#909090;
+
+	padding: 0px 0px 0px 0px;
+	width: 100px;
+	
+	}
+
+div.shadow {
+  padding: 1px 1px 0 0;
+  background: #404040;
+  border-left: 1px solid #151515;
+  border-right: 1px solid #151515;
+  position: relative;
+}
+
+div.shadow img {
+  padding: 5px 5px 9px 5px;
+  background: white url(/shadows/shad_bottom.png) repeat-x bottom left;
+}
+
+div.shadow img.nomatte {
+  padding: 0 0 4px 0;
+  background: white url(/shadows/shad_bottom.png) repeat-x bottom left;
+}
+
+div.shadow div.topleft {
+  width: 2px;
+  height: 4px;
+  background: url(/shadows/shad_tlcorner.png) no-repeat top left;
+  position: absolute;
+  top: 0px;
+  left: -1px;
+}
+
+div.shadow div.topright {
+  width: 2px;
+  height: 4px;
+  background: url(/shadows/shad_trcorner.png) no-repeat top right;
+  position: absolute;
+  top: 0px;
+  right: -1px;
+}
+
+div.shadow div.bottomleft {
+  width: 4px;
+  height: 4px;
+  background: url(/shadows/shad_blcorner.png) no-repeat bottom left;
+  position: absolute;
+  bottom: 0px;
+  left: -1px;
+}
+
+div.shadow div.bottomright {
+  width: 4px;
+  height: 4px;
+  background: url(/shadows/shad_brcorner.png) no-repeat bottom right;
+  position: absolute;
+  bottom: 0px;
+  right: -1px;
+}
+
+#title
+{
+padding: .5em;
+background-color: #EEE;
+color: black;
+border-bottom: 1px solid gray;
+height: 35px;
+}
+
+#title h1
+{
+padding: 0;
+margin: 0;
+}
+
+#leftnav
+{
+position: absolute;
+top: 50px;
+left: 10px;
+width: 160px;
+margin: 0;
+padding: 1em;
+color: black;
+background: #EEE;
+}
+
+#content
+{
+margin-top: 0px;
+margin-left: 200px;
+color: black;
+border-left: 1px solid gray;
+padding: 5px;
+background: #EEE;
+}
+
+.separator {
+	border-bottom: dashed black 1px;
+}
+
+.secondplace {
+	font-weight: bold;
+}
+
+.firstplace {
+	font-weight: bold;
+	overflow: hidden;
+	}
+
+.floattitle {
+	background-repeat: no-repeat;
+	background-color: #007;
+	color: white;
+	overflow: hidden;
+	text-align: center;
+	padding: 0 px;
+	width: 160px;
+	left: 0px;
+	right: 0px;
+}
+
+div.floatbox
+{
+float: right;
+position: relative;
+#top: 50px;
+margin-left: 10px;
+margin-bottom: 10px;
+right: 10px;
+padding: 0px;
+color: black;
+border: 1px solid black;
+background: #EEE;
+voice-family: "\"}\""; /* Start ie5 hack */
+voice-family:inherit;
+width: 160px;
+height: 300px;
+overflow: hidden;
+}
+html>body #right {
+	width: 120px; /* ie5 mess */
+}
+
+div.floatbox2
+{
+float: right;
+clear: right;
+position: relative;
+margin-left: 10px;
+margin-bottom: 10px;
+top: 10px;
+right: 10px;
+padding: 0px;
+color: black;
+border: 1px solid black;
+background: #EEE;
+voice-family: "\"}\""; /* Start ie5 hack */
+voice-family:inherit;
+width: 160px;
+overflow: hidden;
+}
+html>body #right {
+	width: 160px; /* ie5 mess */
+}
+
+#footer
+{
+ clear: both;
+ margin: 0;
+ padding: .5em;
+ color: black;
+ background-color: #EEE;
+ text-align: center;
+}
+
+#leftnav p { margin: 0 0 1em 0; }
+#content h2 { margin: 0 0 .5em 0; }
+
+div.links {
+ width: 144;
+ height: 25;
+ text-align: right;
+ padding: 5px;
+}
+
+div.links A:link {
+  font-weight: bold;
+  text-decoration: none;
+}
+
+div.links A:visited {
+  text-decoration: none;
+}
+
+div.links A:active {
+  text-decoration: none;
+}
+
+div.links A:hover {
+  text-decoration: underline;
+}
+
+
+#footerlinks {
+ width: 144;
+ height: 25;
+ text-align: center;
+ padding: 5px;
+}
+
+#footerlinks A:link {
+  font-weight: bold;
+  text-decoration: none;
+}
+
+#footerlinks A:visited {
+  text-decoration: none;
+}
+
+#footerlinks A:active {
+  text-decoration: none;
+}
+
+#footerlinks A:hover {
+  text-decoration: underline;
+}
+
+.spoiler {
+    background: black;
+}
+
+.spoiler:hover {
+    background: clear;
+}

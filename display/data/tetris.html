@@ -1,0 +1,31 @@
+<script src='http://ajax.googleapis.com/ajax/libs/jquery/1.3.1/jquery.min.js' type='text/javascript'></script>
+<script type='text/javascript'>
+  function keyDownHandler(event) {
+      var keyPressed =String.fromCharCode(event.keyCode);
+      if (keyPressed=='A') {
+          $.ajax({ url: '/l', async: false });
+      }
+      if (keyPressed=='D') {
+          $.ajax({ url: '/r', async: false });
+      }
+      if (keyPressed=='Q') {
+          $.ajax({ url: '/rl', async: false });
+      }
+      if (keyPressed=='E') {
+          $.ajax({ url: '/rr', async: false });
+      }
+      if (keyPressed=='S') {
+          $.ajax({ url: '/s', async: false });
+      }
+      if (keyPressed==' ') {
+          $.ajax({ url: '/d', async: false });
+      }
+  }
+  document.addEventListener('keydown',keyDownHandler, false);
+  document.addEventListener('keyup',keyUpHandler, false);
+</script>
+
+<center><h1>Tetris</h1></center>
+
+<p>Keys: <ul><li>Left and right: <b>a</b> and <b>d</b></li><li>Rotate: <b>q</b> and <b>e</b></li><li>Step: <b>s</b></li><li>Drop: <b>space</b></li></ul></p>
+
