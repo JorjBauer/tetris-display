@@ -117,9 +117,15 @@ bool WebManager::isAuthenticated() {
       uint32_t decEpoch = dec.toInt();
       if (decEpoch &&
           server.epochTime &&
-          decEpoch >= server.epochTime - LOGIN_PERIOD_SECONDS) {
+          decEpoch + LOGIN_PERIOD_SECONDS >= server.epochTime) {
         tlog.logmsg("success");
         return true;
+      } else {
+        char buf[256];
+        sprintf(buf, "failed time check - decEpoch is %ld and server.epochTime is %ld",
+                decEpoch, server.epochTime);
+        tlog.logmsg(buf);
+        // fall through
       }
     }
   }
