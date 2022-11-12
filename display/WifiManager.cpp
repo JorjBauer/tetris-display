@@ -1,35 +1,36 @@
 #include "WifiManager.h"
-#include "Prefs.h"
 #include <ArduinoOTA.h>
 
+#include "Prefs.h"
 extern Prefs myprefs;
+
+#include "TCPLogger.h"
+extern TCPLogger tlog;
 
 WifiManager::WifiManager()
 {
   softAP = false;
   scanUnderway = false;
   nextWifiScan = 0;
+  myprefs = NULL;
 }
 
 WifiManager::~WifiManager()
 {
 }
 
-void WifiManager::begin(const char *templateName)
+void WifiManager::begin(const Prefs *p, const char *templateName)
 {
+  myprefs = p;
   baseName = templateName;
   
-  if (!strlen(myprefs.ssid)) {
-    StartSoftAP();
-  } else {
-    JoinNetwork();
-  }
+  JoinNetwork(); // will call StartSoftAP() if necessary
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
   
-  ArduinoOTA.setHostname(myprefs.mdnsName);
-  if (myprefs.otaPassword[0]) {
-    ArduinoOTA.setPassword(myprefs.otaPassword);
+  ArduinoOTA.setHostname(myprefs->mdnsName);
+  if (myprefs->otaPassword[0]) {
+    ArduinoOTA.setPassword(myprefs->otaPassword);
   } else {
     ArduinoOTA.setPassword("admin");
   }
@@ -43,7 +44,7 @@ void WifiManager::loop()
   bool rejoinSSID = false;
   // If we're running a SoftAP, periodically scan to see if our prefs.ssid
   // appears. If so, then try to join it.
-  if (softAP && myprefs.ssid[0] && (millis() > nextWifiScan)) {
+  if (softAP && myprefs->ssid[0] && (millis() > nextWifiScan)) {
     WiFi.scanNetworks(true, false); // async, and don't show hidden
                                     // nets
     scanUnderway = true;
@@ -56,7 +57,7 @@ void WifiManager::loop()
       if (numberOfNetworks > 0) {
         // >0 means there are results to inspect
         for (int i=0; i<numberOfNetworks; i++) {
-          if (!strcmp(WiFi.SSID(i).c_str(), myprefs.ssid)) {
+          if (!strcmp(WiFi.SSID(i).c_str(), myprefs->ssid)) {
             // The SSID we want to be connected to exists - try to
             // join it
             rejoinSSID = true;
@@ -91,21 +92,31 @@ void WifiManager::StartSoftAP()
 
 void WifiManager::JoinNetwork()
 {
-  WiFi.mode(WIFI_STA);
-  WiFi.setPhyMode((WiFiPhyMode_t)PHY_MODE_11N);
-  WiFi.begin(myprefs.ssid, myprefs.password);
-  uint8_t count=0;
-  while (count < 10 && WiFi.waitForConnectResult() != WL_CONNECTED) {
-    count++;
-    delay(5000);
-  }
-  if (count >= 10) {
-    // Failed to connect to wifi. Fallback to SoftAP.
-    StartSoftAP();
+  if (strlen(myprefs->ssid)) {
+    tlog.logmsg("Attempting to join network:");
+    tlog.logmsg(myprefs->ssid);
+    WiFi.mode(WIFI_STA);
+    WiFi.setPhyMode((WiFiPhyMode_t)PHY_MODE_11N);
+    WiFi.begin(myprefs->ssid, myprefs->password);
+    uint8_t count=0;
+    while (count < 10 && WiFi.waitForConnectResult() != WL_CONNECTED) {
+      tlog.logmsg(" ... waiting");
+      count++;
+      delay(5000);
+    }
+    if (count >= 10) {
+      // Failed to connect to wifi. Fallback to SoftAP.
+      tlog.logmsg(" ... failed to join; falling back to SoftAP");
+      StartSoftAP();
+    } else {
+      // connected successfully - stop any softap functionality in
+      // progress
+      tlog.logmsg(" ... joined. Ensuring SoftAP is shut down");
+      softAP = false;
+      scanUnderway = false;
+    }
   } else {
-    // connected successfully - stop any softap functionality in
-    // progress
-    softAP = false;
-    scanUnderway = false;
+    tlog.logmsg("No SSID is set; can't join network. Starting SoftAP.");
+    StartSoftAP();
   }
 }

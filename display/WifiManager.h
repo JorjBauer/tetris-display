@@ -3,20 +3,22 @@
 
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include "Prefs.h"
 
 class WifiManager {
  public:
   WifiManager();
   ~WifiManager();
 
-  void begin(const char *templateName);
+  void begin(const Prefs *p, const char *templateName);
   void loop();
 
+  void JoinNetwork();
  private:
   void StartSoftAP();
-  void JoinNetwork();
   
  private:
+  const Prefs *myprefs;
   String baseName;
   
   bool softAP;

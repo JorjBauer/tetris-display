@@ -1,10 +1,14 @@
 #ifndef __LEDABSTRACTION_H
 #define __LEDABSTRACTION_H
 
-
+/* This uses a fork of FastLED that uses DMA on the ESP8266:
+ *    https://github.com/coryking/FastLED.git fastled-fork
+ * If it winds up using the stock FastLED, it will *almost* work
+ * except that (as of v3.5.0) it flickers about once a second
+ */
 #define FASTLED_ALLOW_INTERRUPTS 0
 #define FASTLED_ESP8266_DMA
-#include <FastLED.h>
+#include "fastled-fork/FastLED.h"
 
 #define NUM_COLS 32
 #define NUM_ROWS 8

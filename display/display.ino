@@ -601,6 +601,9 @@ void handleSubmit()
   String new_updateserverport = server.arg("updateserverport");
   String new_updateserverpath = server.arg("updateserverpath");
 
+  bool ssidChanged = strcmp(myprefs.ssid, new_ssid.c_str()) ||
+    strcmp(myprefs.password, new_password.c_str());
+  
   myprefs.set("ssid", new_ssid);
   myprefs.set("password", new_password);
   myprefs.set("comment", new_comment);
@@ -621,6 +624,10 @@ void handleSubmit()
   myprefs.read();
   ArduinoOTA.setPassword(myprefs.otaPassword);
 
+  if (ssidChanged) {
+    wifi.JoinNetwork();
+  }
+  
   // Redirect to /status to show the changes
   server.sendHeader("Location", String("/status"), true);
   server.send(302, "text/plain", "");
@@ -644,7 +651,7 @@ void setup()
     prefsOk = myprefs.read();
   }
 
-  wifi.begin(NAME);
+  wifi.begin(&myprefs, NAME);
 
   server.begin();
   tlog.begin();

@@ -22,7 +22,7 @@ void TCPLogger::logmsg(String s)
 
 void TCPLogger::logmsg(const char *msg)
 {
-  if (tcpclient.connected()) {
+  if (tcpclient && tcpclient.connected()) {
     tcpclient.println(msg);
     tcpclient.flush();
   }
