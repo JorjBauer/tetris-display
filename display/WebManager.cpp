@@ -81,8 +81,8 @@ void WebManager::loop()
       // success!
       epochTime = timeClient->getEpochTime();
       lastTimeUpdate = epochTime;
-      nextTimeUpdate = millis() + 15 * 60 * 1000; // once every 15 minutes
     }
+    nextTimeUpdate = millis() + 15 * 60 * 1000; // once every 15 minutes, regardless of whether we succeeded or failed
   }
 }
 
