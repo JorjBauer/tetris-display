@@ -7,7 +7,6 @@
 #include <ArduinoOTA.h>
 #include "templater.h"
 #include <TimeLib.h>
-#include <ESP8266TimerInterrupt.h>
 
 extern Prefs myprefs;
 extern TCPLogger tlog;
@@ -25,7 +24,6 @@ static const char ftrue[] PROGMEM = "true";
 static const char ffalse[] PROGMEM = "false";
 
 Templater templ;
-ESP8266Timer iTimer;
 
 WebManager::WebManager(int port) : ESP8266WebServer(port)
 {
@@ -43,16 +41,8 @@ WebManager::~WebManager()
   delete timeClient;
 }
 
-void TimerHandler()
-{
-  server.epochTime++;
-}
-
 void WebManager::begin()
 {
-  // The interval is in microseconds
-  iTimer.attachInterruptInterval(1000*1000, TimerHandler);
-  
   on("/", handleIndex);
   serveStatic("/style.css", SPIFFS, "/style.css");
   serveStatic("/main.js", SPIFFS, "/main.js");
@@ -75,6 +65,17 @@ void WebManager::begin()
 
 void WebManager::loop()
 {
+  // We're not using an interrupt b/c we don't want to break any
+  // projects that are timing-sensitive. We'll trust this is called
+  // often enough to do close enough to the right thing
+  static uint32_t lastMillis = 0;
+  uint32_t currentMillis = millis();
+  int64_t millisDiff = currentMillis - lastMillis;
+  if (millisDiff > 0) { // poor, lazy protection from over/underflow
+    server.epochTime += (millisDiff / 1000);
+    lastMillis += (millisDiff / 1000) * 1000;
+  }
+  
   handleClient();
   if (millis() > nextTimeUpdate) {
     if (timeClient->update()) {
