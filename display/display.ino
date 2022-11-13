@@ -40,6 +40,8 @@ WiFiUDP Udp;
 
 bool fsRunning;
 
+int debugValue; // Debugging: used to find a WDT reset that's happening
+
 int localPort = 8267;
 byte packetBuffer[25];
 WiFiServer tcpserver(8267); // tcp server
@@ -629,6 +631,11 @@ void handleSubmit()
 
 void setup()
 {
+  Serial.begin(115200);
+  delay(700);
+  Serial.print("debug startup: debugValue is ");
+  Serial.println(debugValue);
+  
   randomSeed(analogRead(A0));
 
   if(SPIFFS.begin())
@@ -835,13 +842,19 @@ void addColumnToBackingStore(uint8_t data)
 }
 
 void loop() {
+  debugValue = 1;
   MDNS.update();
 
+  debugValue = 2;
   server.loop();
+  debugValue = 3;
   wifi.loop();
+  debugValue = 4;
   tlog.loop();
 
+  debugValue = 5;
   int noBytes = Udp.parsePacket();
+  debugValue = 6;
   if (noBytes) {
     handleUdp(noBytes);
     needsRefresh = true;
@@ -852,6 +865,7 @@ void loop() {
   // one to drop.
   //
   // Also, this won't accept a new connection while text is scrolling.
+  debugValue = 7;
   if (tcpserver.hasClient() &&
       ( ( currentMode != mode_text ) ||
 	( (!backingText.hasData()) &&
@@ -863,14 +877,17 @@ void loop() {
     currentMode = mode_pickGame;
     pickGameTimeout = millis() + MENUTIMEOUT;
   }
+  debugValue = 8;
   if (tcpclient && tcpclient.available() > 0) {
     char c = tcpclient.read();
     handleChar(c);
     needsRefresh = true;
   }
 
+  debugValue = 9;
   clockDriver->loop();
 
+  debugValue = 10;
   if (currentMode == mode_clock) {
     if (millis() >= nextTick) {	 
       if (clockRestarting) {
@@ -909,6 +926,7 @@ void loop() {
     }
   }
 
+  debugValue = 11;
   if ((currentMode == mode_tetris || currentMode == mode_snake) && 
       ((tcpclient && tcpclient.connected()) ||
        udpRunStarted)) {
@@ -937,6 +955,7 @@ void loop() {
     }
   }
 
+  debugValue = 12;
   if (currentMode == mode_tetris && needsRefresh) {
     if (tetrisEngine.changedPieceThisTurn()) {
       nextTick = millis() + 750;
@@ -966,6 +985,7 @@ void loop() {
     }
   }
 
+  debugValue = 13;
   if ((currentMode == mode_tetris || currentMode == mode_snake) &&
       needsRefresh) {
     for (int y=0; y<YSIZE; y++) {
@@ -1010,10 +1030,12 @@ void loop() {
     needsRefresh = false;
   }
 
+  debugValue = 14;
   if (currentMode == mode_text || currentMode == mode_startup) {
     textLoop();
   }
 
+  debugValue = 15;
   if (currentMode == mode_pickGame) {
     // Draw the basic menu
     ledPanel.clear(true);
@@ -1054,12 +1076,14 @@ void loop() {
     }
   }
 
+  debugValue = 16;
   if (currentMode == mode_tree) {
     EVERY_N_MILLISECONDS(100) {
       handleTreeBlinkers();
     }
   }
 
+  debugValue = 17;
   EVERY_N_MILLISECONDS(35) {
     if (colorWheelMode) {
       ledPanel.stepColorWheel();
@@ -1258,7 +1282,6 @@ void checkForUpdate(ESP8266WebServer *server, String &url)
   ESPhttpUpdate.rebootOnUpdate(true); // doesn't finish sending content if it's not true anyway, so just reboot
   ESPhttpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   WiFiClient client;
-  // This can take a URL instead of broken out pieces. Use that instead maybe?
   t_httpUpdate_return ret = ESPhttpUpdate.update(client, url.c_str());
   
   switch (ret) {
