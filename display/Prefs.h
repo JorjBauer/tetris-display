@@ -14,7 +14,7 @@ class Prefs {
   void write();
   bool read();
 
-  void extendedWrite(fs::File f) { }; // For virtual overloads to write more prefs
+  virtual void extendedWrite(fs::File f) { }; // For virtual overloads to write more prefs
   
   void setDefaults();
   void set(const char *what, String newVal);
