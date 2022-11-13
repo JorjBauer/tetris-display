@@ -684,7 +684,7 @@ void setup()
   server.on("/submit2", handleSubmit); // override default behavior FIXME
   server.on("/starttree", handleStartTree);
   server.on("/checkDownload", handleCheckDownload);
-
+  
   Udp.begin(localPort);
   tcpserver.begin();
 
@@ -1263,30 +1263,32 @@ void checkForUpdate(ESP8266WebServer *server, String &url)
   
   switch (ret) {
   case HTTP_UPDATE_FAILED:
-    server->sendContent("<p>Update failed: error ");
+    server->sendContent("Update failed: error ");
     server->sendContent(String(ESPhttpUpdate.getLastError()));
     server->sendContent(": ");
     server->sendContent(ESPhttpUpdate.getLastErrorString());
-    server->sendContent("</p>");
     break;
   case HTTP_UPDATE_NO_UPDATES:
-    server->sendContent("<p>No update needed.</p>");
+    server->sendContent("No update needed.");
     break;
   case HTTP_UPDATE_OK:
-    server->sendContent("<p>Update ok. You will need to reboot the device to take effect.</p>");
+    server->sendContent("Update ok. You will need to reboot the device to take effect.");
     // FIXME: notreached, b/c of reboot above. Not sure how to avoid that tho.
     break;
   }
 }
 
+// Use basic auth for /checkDownload so it can be called from curl, like this:
+//  $ curl -u admin:<pass> '<ip address>/checkDownload?url=http://dl.example.com/file.bin'
 void handleCheckDownload()
 {
-  if (!server.isAuthenticated()) {
+  if (!server.authenticate("admin", myprefs.adminPassword)) {
+    server.requestAuthentication();
     return;
   }
   String url = server.arg("url");
 
-  server.SendHeader();
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.send(200, "text/html", "");
   checkForUpdate(&server, url);
-  server.SendFooter();
 }
