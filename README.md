@@ -89,3 +89,18 @@ this:
 
 It takes about 20 seconds to pull the binary and another 15 seconds to reboot.
 
+Install errors on Big Sur and above
+===================================
+
+If you see the error "pyserial or esptool directories not found next
+to this upload.py tool", you might need to patch up 2.7.4 so it will
+install on your device. This worked for me:
+
+* Remove the existing esptool and pyserial folders in
+  ~/Library/Arduino15/packages/esp8266/hardware/esp8266/2.7.4/tools/
+* Download https://github.com/espressif/esptool/archive/v3.0.zip
+* Download https://github.com/pyserial/pyserial/archive/v3.4.zip
+* Extract both of those archives in to the library tools directory
+* Rename "pyserial-3.4" to just "pyserial"
+* Rename "esptool-3.0" to just "esptool"
+* Restart the Arduino IDE
