@@ -5,13 +5,14 @@
 #include <ESP8266WebServer.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
+#include "Prefs.h"
 
 class WebManager : virtual public ESP8266WebServer {
  public:
   WebManager(int port);
   ~WebManager();
 
-  void begin();
+  void begin(const Prefs *p);
   void loop();
 
   bool isAuthenticated();

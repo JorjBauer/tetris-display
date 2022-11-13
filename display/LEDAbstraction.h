@@ -8,7 +8,7 @@
  */
 #define FASTLED_ALLOW_INTERRUPTS 0
 #define FASTLED_ESP8266_DMA
-#include "fastled-fork/FastLED.h"
+#include <FastLED.h>
 
 #define NUM_COLS 32
 #define NUM_ROWS 8

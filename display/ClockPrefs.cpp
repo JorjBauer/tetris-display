@@ -2,9 +2,6 @@
 
 ClockPrefs::ClockPrefs() : Prefs()
 {
-  updateServerHost[0] = 0;
-  updateServerPort = 80;
-  updateServerPath[0] = 0;
 }
 
 ClockPrefs::~ClockPrefs()
@@ -31,12 +28,6 @@ void ClockPrefs::extendedWrite(fs::File f)
     f.println("N");
     break;
   }
-  f.print("updateServerPort=");
-  f.println(updateServerPort);
-  f.print("updateServerPath=");
-  f.println(updateServerPath);
-  f.print("updateServerHost=");
-  f.println(updateServerHost);
 }
 
 void ClockPrefs::setDefaults()
@@ -46,9 +37,6 @@ void ClockPrefs::setDefaults()
   lon = -75;
   defaultTimeZone = -5;
   autoSetDST = T_DST_USA;
-  updateServerHost[0] = 0;
-  updateServerPort = 80;
-  updateServerPath[0] = 0;
 }
 
 void ClockPrefs::set(const char *what, String newVal)
@@ -76,13 +64,6 @@ void ClockPrefs::set(const char *what, const char *newVal)
       autoSetDST = T_DST_NONE;
       break;
     }
-  } else if (!strcmp(what, "updateServerHost")) {
-    strncpy(updateServerHost, newVal, sizeof(updateServerHost));
-  } else if (!strcmp(what, "updateServerPort")) {
-    updateServerPort = strtol(newVal, (char **)NULL, 10);
-    if (!updateServerPort) updateServerPort = 80;
-  } else if (!strcmp(what, "updateServerPath")) {
-    strncpy(updateServerPath, newVal, sizeof(updateServerPath));
   }
   else
     Prefs::set(what, newVal);

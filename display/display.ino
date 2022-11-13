@@ -146,9 +146,6 @@ void handleStatus() {
   r = templ.addRepvar(r, String("@COMMENT@"), String(myprefs.comment));
   r = templ.addRepvar(r, String("@ADMINPW@"), String(myprefs.adminPassword));
   r = templ.addRepvar(r, String("@OTAPW@"), String(myprefs.otaPassword));
-  r = templ.addRepvar(r, String("@UPDATESVRIP@"), String(myprefs.updateServerHost));
-  r = templ.addRepvar(r, String("@UPDATESVRPORT@"), String(myprefs.updateServerPort));
-  r = templ.addRepvar(r, String("@UPDATESVRPATH@"), String(myprefs.updateServerPath));
   r = templ.addRepvar(r, String("@HASHMAT@"), String(myprefs.hashMaterial));
   r = templ.addRepvar(r, String("@EPOCH@"), String(server.epochTime));
   r = templ.addRepvar(r, String("@NTPSYNC@"), String(server.lastTimeUpdate));
@@ -558,9 +555,6 @@ void handleConfig()
   r = templ.addRepvar(r, String("@PASS@"), String(myprefs.password));
   r = templ.addRepvar(r, String("@ADMINPW@"), String(myprefs.adminPassword));
   r = templ.addRepvar(r, String("@OTAPW@"), String(myprefs.otaPassword));
-  r = templ.addRepvar(r, String("@UPDATESVRIP@"), String(myprefs.updateServerHost));
-  r = templ.addRepvar(r, String("@UPDATESVRPORT@"), String(myprefs.updateServerPort));
-  r = templ.addRepvar(r, String("@UPDATESVRPATH@"), String(myprefs.updateServerPath));
   r = templ.addRepvar(r, String("@HASHMAT@"), String(myprefs.hashMaterial));
   r = templ.addRepvar(r, String("@COMMENT@"), String(myprefs.comment));
   r = templ.addRepvar(r, String("@LAT@"), String(myprefs.lat));
@@ -628,8 +622,8 @@ void handleSubmit()
     wifi.JoinNetwork();
   }
   
-  // Redirect to /status to show the changes
-  server.sendHeader("Location", String("/status"), true);
+  // Redirect to /status2 to show the changes
+  server.sendHeader("Location", String("/status2"), true);
   server.send(302, "text/plain", "");
 }
 
@@ -653,7 +647,7 @@ void setup()
 
   wifi.begin(&myprefs, NAME);
 
-  server.begin();
+  server.begin(&myprefs);
   tlog.begin();
 
   location = NULL;
@@ -1258,29 +1252,29 @@ void drawTree()
   }
 }
 
-void checkForUpdate(ESP8266WebServer *server)
+// FIXME: could this page be basicAuth so we can do it with curl?
+void checkForUpdate(ESP8266WebServer *server, String &url)
 {
-  ESPhttpUpdate.rebootOnUpdate(true);
+  ESPhttpUpdate.rebootOnUpdate(true); // doesn't finish sending content if it's not true anyway, so just reboot
+  ESPhttpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   WiFiClient client;
   // This can take a URL instead of broken out pieces. Use that instead maybe?
-  t_httpUpdate_return ret = ESPhttpUpdate.update(client,
-                                                 myprefs.updateServerHost,
-                                                 myprefs.updateServerPort,
-                                                 myprefs.updateServerPath);
+  t_httpUpdate_return ret = ESPhttpUpdate.update(client, url.c_str());
   
   switch (ret) {
   case HTTP_UPDATE_FAILED:
-    server->sendContent("Update failed: error ");
+    server->sendContent("<p>Update failed: error ");
     server->sendContent(String(ESPhttpUpdate.getLastError()));
     server->sendContent(": ");
     server->sendContent(ESPhttpUpdate.getLastErrorString());
+    server->sendContent("</p>");
     break;
   case HTTP_UPDATE_NO_UPDATES:
-    server->sendContent("No update needed.");
+    server->sendContent("<p>No update needed.</p>");
     break;
   case HTTP_UPDATE_OK:
-    server->sendContent("Update ok.");
-    // FIXME: should we force a reboot here? Or does that already happen?
+    server->sendContent("<p>Update ok. You will need to reboot the device to take effect.</p>");
+    // FIXME: notreached, b/c of reboot above. Not sure how to avoid that tho.
     break;
   }
 }
@@ -1290,8 +1284,9 @@ void handleCheckDownload()
   if (!server.isAuthenticated()) {
     return;
   }
+  String url = server.arg("url");
 
   server.SendHeader();
-  checkForUpdate(&server);
+  checkForUpdate(&server, url);
   server.SendFooter();
 }

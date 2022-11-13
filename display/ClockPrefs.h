@@ -16,7 +16,7 @@ class ClockPrefs : virtual public Prefs {
   ClockPrefs();
   ~ClockPrefs();
 
-  void extendedWrite(fs::File f);
+  virtual void extendedWrite(fs::File f);
   
   void setDefaults();
   void set(const char *what, String newVal);
@@ -27,9 +27,6 @@ class ClockPrefs : virtual public Prefs {
   float lon;
   int8_t defaultTimeZone;
   int8_t autoSetDST;
-  char updateServerHost[50];
-  uint16_t updateServerPort;
-  char updateServerPath[50];
 };
 
 #endif

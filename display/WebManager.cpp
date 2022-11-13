@@ -41,8 +41,9 @@ WebManager::~WebManager()
   delete timeClient;
 }
 
-void WebManager::begin()
+void WebManager::begin(const Prefs *p)
 {
+  //  myprefs = p;
   on("/", handleIndex);
   serveStatic("/style.css", SPIFFS, "/style.css");
   serveStatic("/main.js", SPIFFS, "/main.js");

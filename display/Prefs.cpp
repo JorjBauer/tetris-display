@@ -1,8 +1,11 @@
 #include <Arduino.h>
 #include <FS.h>
 #include <CRC32.h>
+#include "TCPLogger.h"
 
 #include "Prefs.h"
+
+extern TCPLogger tlog;
 
 Prefs::Prefs()
 {
@@ -41,6 +44,9 @@ void Prefs::begin(const char *baseName)
 void Prefs::write()
 {
   fs::File f = SPIFFS.open(prefsFileName, "w");
+  if (!f) {
+    tlog.logmsg("ERROR: could not open file");
+  }
 
   f.print("# Configuration for ");
   f.println(baseName);
