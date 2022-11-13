@@ -35,7 +35,7 @@ void TCPLogger::loop()
       tcpclient.stop();
     }
     tcpclient = tcpserver->available();
-    tcpclient.println("Hello");
+    tcpclient.println("Hello from TetrisClock");
     tcpclient.flush();
   }
 }

@@ -858,7 +858,7 @@ void loop() {
 	  (!backingPixels.hasData()) ) )
       ) {
     tcpclient = tcpserver.available();
-    tcpclient.print("Hello");
+    tcpclient.print("Hello again");
     tcpclient.flush();
     currentMode = mode_pickGame;
     pickGameTimeout = millis() + MENUTIMEOUT;
