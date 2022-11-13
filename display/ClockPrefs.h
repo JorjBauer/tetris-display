@@ -11,16 +11,16 @@ enum {
   T_DST_EU   = 2
 };
 
-class ClockPrefs : virtual public Prefs {
+struct ClockPrefs : public Prefs {
  public:
   ClockPrefs();
-  ~ClockPrefs();
+  virtual ~ClockPrefs();
 
   virtual void extendedWrite(fs::File f);
   
-  void setDefaults();
-  void set(const char *what, String newVal);
-  void set(const char *what, const char *newVal);
+  virtual void setDefaults();
+  virtual void set(const char *what, String newVal);
+  virtual void set(const char *what, const char *newVal);
 
  public:
   float lat;

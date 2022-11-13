@@ -4,10 +4,10 @@
 #include <stdint.h>
 #include <FS.h>
 
-class Prefs {
+struct Prefs {
  public:
   Prefs();
-  ~Prefs();
+  virtual ~Prefs();
 
   void begin(const char *baseName);
   
@@ -16,15 +16,15 @@ class Prefs {
 
   virtual void extendedWrite(fs::File f) { }; // For virtual overloads to write more prefs
   
-  void setDefaults();
-  void set(const char *what, String newVal);
-  void set(const char *what, const char *newVal);
+  virtual void setDefaults();
+  virtual void set(const char *what, String newVal);
+  virtual void set(const char *what, const char *newVal);
 
   private:  
   char *prefsFileName;
   char *baseName;
   
- public:
+  public:
   char ssid[50];
   char password[50];
   char mdnsName[50];
