@@ -59,7 +59,7 @@ void WebManager::begin(const Prefs *p)
     }, handleUpload);
   on("/rm", handleRm);
   on("/restart", handleRestart);
-
+  
   const char *headerArray[1] = { "Cookie" };
   collectHeaders(headerArray, 1); // we need Cookie headers for AuthN checks. This takes an array of cookie names, and the length of that array.
   ESP8266WebServer::begin();
@@ -343,12 +343,18 @@ void WebManager::handleSubmit()
   server.send(302, FPSTR(textplain), "");
 }
 
-// FIXME: upload needs authentication. But I use it from a curl
-// command, so how to do that?
+// handleUpload(), since it's probably used via curl, uses basicAuth instead of a login.
+// Then curl works something like this:
+//  $ curl -u admin:<pass> -F "file=@data/config.html" '<ip address>/upload?file=/config.html'
 fs::File fsUploadFile;
 // static method
 void WebManager::handleUpload()
 {
+  if (!server.authenticate("admin", myprefs.adminPassword)) {
+    server.requestAuthentication();
+    return;
+  }
+  
   HTTPUpload &upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
     String filename = upload.filename;
@@ -365,18 +371,19 @@ void WebManager::handleUpload()
   }
 }
 
-// static method
+// static method. Works like handleUpload().
 void WebManager::handleDownload()
 {
-  if (!server.isAuthenticated()) {
+  if (!server.authenticate("admin", myprefs.adminPassword)) {
+    server.requestAuthentication();
     return;
   }
   
   String filename = server.arg("file");
   if (filename.isEmpty()) {
     server.send(200,
-                FPSTR(texthtml),
-                F("<html><h3>Error</h3><div>No file argument specified</div></html>"));
+                FPSTR(textplain),
+                F("No file arguemnt specified"));
     return;
   }
   if (!filename.startsWith("/")) {
@@ -386,8 +393,8 @@ void WebManager::handleDownload()
   fs::File f = SPIFFS.open(filename, "r");
   if (!f) {
     server.send(200,
-                FPSTR(texthtml),
-                F("<html><h3>Error</h3><div>File not found</div></html>"));
+                FPSTR(textplain),
+                F("File not found"));
     return;
   }
 
@@ -454,4 +461,3 @@ void WebManager::handleRestart()
 
   ESP.restart();
 }
-
