@@ -69,3 +69,23 @@ the time), but in the middle of the patch you'll find this comment:
 Go to the board manager and install the esp8266 platform version
 2.7.4; as of this writing, there's no way to fix this problem with
 version 3.0.0 and above.
+
+OTA Updates
+===========
+
+While this does have OTA updates enabled, they probably won't work for
+you. ArduinoOTA only works if the program you're installing is less
+than 50% of the program space. On a typical ESP-01s, this is 57% of
+the program space right now. If you're installing on a larger esp8266
+variant then it should work just fine.
+
+There's also an embedded HTTP updater that you can use, however. (Note
+that this must be http, and not https.) If you use "export binary"
+from the Arduino IDE, and then take the output .bin file it generates
+to a web server, you can pass that web server URL to the clock like
+this:
+
+   http://<clock IP>/checkDownload?url=http://example.org/display.ino.generic.bin
+
+It takes about 20 seconds to pull the binary and another 15 seconds to reboot.
+
