@@ -204,7 +204,7 @@ void handleTetris() {
   fs::File f = SPIFFS.open("/tetris.html", "r");
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/html", "");
-  server.sendContent(f);
+  server.sendFileHandle(f);
   f.close();
 }
 

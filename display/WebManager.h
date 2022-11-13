@@ -17,6 +17,8 @@ class WebManager : virtual public ESP8266WebServer {
 
   bool isAuthenticated();
 
+  void sendFileHandle(fs::File f);
+
   void SendHeader();
   void SendFooter();
 

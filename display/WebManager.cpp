@@ -59,8 +59,9 @@ void WebManager::begin(const Prefs *p)
     }, handleUpload);
   on("/rm", handleRm);
   on("/restart", handleRestart);
-  
-  collectHeaders("Cookie"); // we need Cookie headers for AuthN checks
+
+  const char *headerArray[1] = { "Cookie" };
+  collectHeaders(headerArray, 1); // we need Cookie headers for AuthN checks. This takes an array of cookie names, and the length of that array.
   ESP8266WebServer::begin();
 }
 
@@ -152,11 +153,26 @@ void WebManager::SendHeader()
   }
 }
 
+// For methods that don't support ::sendContent(fs::File*) -- and also
+// for versions of the ESP8266 board manager package < 3.0.0 (which
+// might be necessary for some projects because of the NMI changes that
+// were instituted in 3.0.0, but did not exist in 2.7.4).
+void WebManager::sendFileHandle(fs::File f)
+{
+  uint32_t fsize = f.size();
+  char buf[128];
+  while (fsize) {
+    uint32_t count = f.readBytes(buf, MIN(sizeof(buf), fsize));
+    fsize -= count;
+    sendContent(buf, count);
+  }
+}
+
 void WebManager::SendFooter()
 {
   fs::File f = SPIFFS.open("/footer.html", "r");
   if (f) {
-    sendContent(f);
+    sendFileHandle(f); // could be sendContent(f) with platform 3.0.0+, but not 2.7.4
     f.close();
   }
 }
@@ -166,7 +182,7 @@ void WebManager::handleIndex()
 {
   server.SendHeader();
   fs::File f = SPIFFS.open("/index.html", "r");
-  server.sendContent(f);
+  server.sendFileHandle(f); // could be sendContent(f) with platform 3.0.0+, but not 2.7.4
   f.close();
   server.SendFooter();
 }
@@ -178,7 +194,7 @@ void WebManager::handleLoginGet()
   // instead, use the individual pieces so we can sendContent(Stream)
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/html", "");
-  server.sendContent(f);
+  server.sendFileHandle(f); // could be sendContent(f) with platform 3.0.0+, but not 2.7.4
   f.close();
 }
 
@@ -377,13 +393,7 @@ void WebManager::handleDownload()
 
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, F("application/octet-stream"), "");
-  uint32_t fsize = f.size();
-  char buf[128];
-  while (fsize) {
-    uint32_t count = f.readBytes(buf, MIN(sizeof(buf), fsize));
-    fsize -= count;
-    server.sendContent(buf, count);
-  }
+  server.sendFileHandle(f);
   f.close();
 }
 
