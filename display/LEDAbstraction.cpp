@@ -112,19 +112,25 @@ static CRGB fadeTowardColor( CRGB& cur, const CRGB& target, uint8_t amount)
   return cur;
 }
 
+extern void WLOG(uint8_t x);
+
 void LEDAbstraction::stepFader()
 {
   if (!isFadeMode)
     return;
 
+  WLOG(200);
   if (blendPoint < 255) {
     blendPoint += 75;
     if (blendPoint > 255) {
       blendPoint = 255;
     }
 
+  WLOG(201);
     nblend(leds, targetLEDs, NUM_LEDS, blendPoint);
+  WLOG(202);
   }
+  WLOG(203);
 }
 
 void LEDAbstraction::setBrightness(uint8_t b)

@@ -26,6 +26,10 @@
 #define CHAR_WIDTH 6
 #define CHAR_HEIGHT 7
 
+// Debugging: store state in RTC RAM so we can tell (post-reboot) where the watchdog fired
+#define RTC_BASE 28
+#define STATE_SIZE 24
+
 extern Templater templ;
 
 LEDAbstraction ledPanel;
@@ -39,8 +43,6 @@ WiFiUDP Udp;
 #define NAME "tetris"
 
 bool fsRunning;
-
-int debugValue; // Debugging: used to find a WDT reset that's happening
 
 int localPort = 8267;
 byte packetBuffer[25];
@@ -633,8 +635,8 @@ void setup()
 {
   Serial.begin(115200);
   delay(700);
-  Serial.print("debug startup: debugValue is ");
-  Serial.println(debugValue);
+  Serial.print("Startup: RTC mem says ");
+  Serial.println(RLOG());
   
   randomSeed(analogRead(A0));
 
@@ -841,20 +843,33 @@ void addColumnToBackingStore(uint8_t data)
  backingPixels.addLine(storeData);
 }
 
-void loop() {
-  debugValue = 1;
-  MDNS.update();
+// Debugging watchdog timeouts by storing private data in the RTC ram, which survives a reboot
+void WLOG(uint8_t x)
+{
+  unsigned char buf[1];
+  buf[0] = x;
+  system_rtc_mem_write(RTC_BASE,buf,1); 
+}
+uint8_t RLOG()
+{
+  unsigned char buf[1];
+  system_rtc_mem_read(RTC_BASE, buf, 1);
+  return buf[0];
+}
 
-  debugValue = 2;
+void loop() {
+  uint32_t sol = millis();
+  MDNS.update();
+  WLOG(1);
+
   server.loop();
-  debugValue = 3;
+  WLOG(2);
   wifi.loop();
-  debugValue = 4;
+  WLOG(3);
   tlog.loop();
 
-  debugValue = 5;
+  WLOG(4);
   int noBytes = Udp.parsePacket();
-  debugValue = 6;
   if (noBytes) {
     handleUdp(noBytes);
     needsRefresh = true;
@@ -865,7 +880,7 @@ void loop() {
   // one to drop.
   //
   // Also, this won't accept a new connection while text is scrolling.
-  debugValue = 7;
+  WLOG(5);
   if (tcpserver.hasClient() &&
       ( ( currentMode != mode_text ) ||
 	( (!backingText.hasData()) &&
@@ -877,17 +892,16 @@ void loop() {
     currentMode = mode_pickGame;
     pickGameTimeout = millis() + MENUTIMEOUT;
   }
-  debugValue = 8;
   if (tcpclient && tcpclient.available() > 0) {
     char c = tcpclient.read();
     handleChar(c);
     needsRefresh = true;
   }
 
-  debugValue = 9;
+  WLOG(6);
   clockDriver->loop();
 
-  debugValue = 10;
+  WLOG(7);
   if (currentMode == mode_clock) {
     if (millis() >= nextTick) {	 
       if (clockRestarting) {
@@ -896,12 +910,15 @@ void loop() {
 	    nextTimeUpdate = millis() + 60 * 10 * 1000; // Update the clock from NTP every 10 minutes
 	  } // else it failed, and we'll try again immediately
 	} else {
+          WLOG(101);
  	  clockDriver->startDisplay();
+          WLOG(102);
 	}
 	clockShowing = true;
 	clockRestarting = false;
       }
 	
+      WLOG(103);
       if (clockShowing) {
 	unsigned long thisDelay = clockDriver->step();
 	if (thisDelay == 0) {
@@ -915,18 +932,21 @@ void loop() {
 	} else {
 	  nextTick = millis() + thisDelay;
 	}
+      WLOG(104);
       } else {
 	// We've finished showing the time. Blank for a while and then start over.
+        WLOG(105);
 	ledPanel.clearByScrolling();
 	colorWheelMode = false;
 	nextTick = millis() + 45 * 1000;
 	clockShowing = false;
 	clockRestarting = true;
+        WLOG(106);
       }
     }
   }
 
-  debugValue = 11;
+  WLOG(8);
   if ((currentMode == mode_tetris || currentMode == mode_snake) && 
       ((tcpclient && tcpclient.connected()) ||
        udpRunStarted)) {
@@ -955,7 +975,7 @@ void loop() {
     }
   }
 
-  debugValue = 12;
+  WLOG(9);
   if (currentMode == mode_tetris && needsRefresh) {
     if (tetrisEngine.changedPieceThisTurn()) {
       nextTick = millis() + 750;
@@ -973,7 +993,9 @@ void loop() {
 	      ledPanel.SetLED(x, l, (c & 1) ? CRGB::White : CRGB::Black);
 	    }
 	  }
+          yield(); // feed the WDT. If this doesn't, then use delay(1) maybe
 	  ledPanel.Update();
+          yield(); // feed the WDT
 	  delay(150);
 	}
       }
@@ -985,7 +1007,7 @@ void loop() {
     }
   }
 
-  debugValue = 13;
+  WLOG(10);
   if ((currentMode == mode_tetris || currentMode == mode_snake) &&
       needsRefresh) {
     for (int y=0; y<YSIZE; y++) {
@@ -1030,12 +1052,12 @@ void loop() {
     needsRefresh = false;
   }
 
-  debugValue = 14;
+  WLOG(11);
   if (currentMode == mode_text || currentMode == mode_startup) {
     textLoop();
   }
 
-  debugValue = 15;
+  WLOG(12);
   if (currentMode == mode_pickGame) {
     // Draw the basic menu
     ledPanel.clear(true);
@@ -1070,28 +1092,34 @@ void loop() {
       }
     }
 
+  WLOG(13);
     if (millis() >= pickGameTimeout) {
       // Timed out waiting for input; go back to the clock
       startClockMode();
     }
   }
 
-  debugValue = 16;
+  WLOG(14);
   if (currentMode == mode_tree) {
     EVERY_N_MILLISECONDS(100) {
       handleTreeBlinkers();
     }
   }
 
-  debugValue = 17;
+  WLOG(15);
   EVERY_N_MILLISECONDS(35) {
     if (colorWheelMode) {
+      WLOG(16);
       ledPanel.stepColorWheel();
+      WLOG(17);
     } else {
+      WLOG(18);
       ledPanel.Update();
+      WLOG(19);
     }
   }
-
+  WLOG(20);
+  
 #if 0
   static uint32_t nextAt = 0;
   static uint16_t pix = 0;
