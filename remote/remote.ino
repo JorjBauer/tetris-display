@@ -332,11 +332,11 @@ bool reconnect() {
   } else {
     // FIXME: hard-coded port b/c MDNS isn't doing what we want on the display
     clientPort = 8267;
-    // Find the one that begins with "tetris-display" and use its IP
+    // Find the one that begins with "tetris" and use its IP
     bool found = false;
     for (int i=0; i<n; i++) {
       String resolvedName = MDNS.hostname(i);
-      if (resolvedName.startsWith("tetris-display")) {
+      if (resolvedName.startsWith("tetris")) {
 	found = true;
 	clientIP = MDNS.IP(i);
 	break;
